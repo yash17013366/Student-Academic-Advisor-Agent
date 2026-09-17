@@ -1,0 +1,1068 @@
+"""
+streamlit_app.py
+----------------
+PHASE 3A - Streamlit UI for the Student Academic Advisor Agent System
+
+ARCHITECTURE:
+    Streamlit (UI)
+        |
+        v
+    run_advisor(student_id)   <- LangGraph workflow
+        |
+        v
+    Agent 1 -> Agent 2 -> Agent 3 -> Ollama
+        |
+        v
+    PreferenceMemory (SQLite)
+
+TWO SCREENS:
+    1. Initialization  — system checks + sequential agent ONLINE display
+    2. Main Dashboard  — student selector, recommendations, preferences
+
+Run with:
+    streamlit run ui/streamlit_app.py
+"""
+
+import sys
+import os
+import time
+from html import escape
+from textwrap import dedent
+
+# ── Add project root so all existing modules are importable ──────────────────
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROJECT_ROOT)
+
+import streamlit as st
+
+# ── Project imports ───────────────────────────────────────────────────────────
+from database.database         import get_all_students, get_all_electives, get_connection
+from agents.academic_profile_agent import AcademicProfileAgent
+from agents.course_analysis_agent  import CourseAnalysisAgent
+from agents.recommendation_agent   import RecommendationAgent
+from workflow.advisor_graph        import run_advisor, build_graph
+from memory.preference_memory      import PreferenceMemory
+from llm.ollama_client             import is_ollama_running, is_model_available, OLLAMA_MODEL
+
+
+# =============================================================================
+# PAGE CONFIGURATION
+# =============================================================================
+
+st.set_page_config(
+    page_title    = "Student Academic Advisor",
+    page_icon     = "🎓",
+    layout        = "wide",
+    initial_sidebar_state = "expanded"
+)
+
+
+# =============================================================================
+# DESIGN SYSTEM — CSS
+# =============================================================================
+
+CREAM_CSS = """
+<style>
+/* ── Google Fonts ──────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+/* ── Color Palette ─────────────────────────────────── */
+:root {
+    --bg-main:      #F7F3EA;
+    --bg-card:      #FFFDF8;
+    --bg-sidebar:   #EFE9DC;
+    --text-primary: #2C241F;
+    --text-secondary: #75685D;
+    --text-muted:   #A89887;
+    --border:       #DED5C8;
+    --accent:       #8B6F4E;
+    --accent-light: #C4A882;
+    --accent-bg:    #F2EBE0;
+    --online-green: #4A7C59;
+    --online-bg:    #EBF4EE;
+    --warn-amber:   #8B6914;
+    --warn-bg:      #FDF6E3;
+    --score-high:   #4A7C59;
+    --score-mid:    #8B6914;
+}
+
+/* ── Global ─────────────────────────────────────────── */
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+    color: var(--text-primary);
+}
+
+.stApp {
+    background-color: var(--bg-main);
+    overflow-x: hidden;
+}
+
+[data-testid="stMainBlockContainer"] {
+    max-width: 1380px;
+    padding-top: 1.2rem;
+    padding-bottom: 2.5rem;
+}
+
+[data-testid="stSidebarContent"] {
+    padding-top: 1.1rem;
+}
+
+/* ── Sidebar ─────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+    background-color: var(--bg-sidebar) !important;
+    border-right: 1px solid var(--border);
+}
+
+[data-testid="stSidebar"] * {
+    color: var(--text-primary) !important;
+}
+
+/* Keep the header visible: it contains the sidebar expand/collapse control. */
+#MainMenu, footer { visibility: hidden; }
+header[data-testid="stHeader"] {
+    background: var(--bg-main) !important;
+    border-bottom: 1px solid var(--border);
+}
+/* Streamlit's control remains available after the sidebar is collapsed. */
+[data-testid="stSidebarCollapsedControl"] {
+    display: flex !important;
+    visibility: visible !important;
+}
+[data-testid="stSidebarCollapsedControl"] button,
+header[data-testid="stHeader"] [data-testid="stBaseButton-headerNoPadding"] {
+    background: var(--accent) !important;
+    border: 1px solid #6B5038 !important;
+    border-radius: 5px !important;
+    color: #FFFDF8 !important;
+    height: 2rem !important;
+    min-width: 2rem !important;
+    opacity: 1 !important;
+}
+[data-testid="collapsedControl"],
+[data-testid="collapsedControl"] button,
+header[data-testid="stHeader"] button {
+    background-color: #4A3224 !important;
+    border: 1px solid #2C241F !important;
+    border-radius: 5px !important;
+    color: #FFFDF8 !important;
+    opacity: 1 !important;
+}
+[data-testid="collapsedControl"]:hover,
+[data-testid="collapsedControl"] button:hover,
+header[data-testid="stHeader"] button:hover {
+    background-color: #2C241F !important;
+}
+[data-testid="stSidebarCollapsedControl"] button svg,
+header[data-testid="stHeader"] [data-testid="stBaseButton-headerNoPadding"] svg {
+    fill: #FFFDF8 !important;
+    stroke: #FFFDF8 !important;
+}
+
+/* ── Buttons ─────────────────────────────────────────── */
+.stButton > button {
+    background: var(--accent) !important;
+    color: #FFFDF8 !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 500 !important;
+    font-size: 0.9rem !important;
+    padding: 0.55rem 1.4rem !important;
+    letter-spacing: 0.04em !important;
+    transition: background 0.2s ease !important;
+}
+.stButton > button:hover {
+    background: #6B5038 !important;
+}
+
+/* ── Selectbox ───────────────────────────────────────── */
+.stSelectbox > div > div {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+    color: var(--text-primary) !important;
+}
+
+/* ── Text input ──────────────────────────────────────── */
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+    color: var(--text-primary) !important;
+    font-family: 'Inter', sans-serif !important;
+}
+
+/* ── Divider ─────────────────────────────────────────── */
+hr { border-color: var(--border) !important; }
+
+/* ── Labels ──────────────────────────────────────────── */
+.stSelectbox label, .stTextInput label, .stTextArea label {
+    color: var(--text-secondary) !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.05em !important;
+    text-transform: uppercase !important;
+}
+
+/* ── Spinners/progress ───────────────────────────────── */
+.stSpinner > div { border-top-color: var(--accent) !important; }
+
+/* ── Metric ──────────────────────────────────────────── */
+[data-testid="metric-container"] {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+}
+
+/* Keep custom card content contained on laptop-width screens. */
+.advisor-card, .advisor-card * {
+    overflow-wrap: anywhere;
+}
+.recommendation-card {
+    border-left: 3px solid #8B6F4E !important;
+}
+.recommendation-score {
+    min-width: 78px;
+}
+@media (max-width: 780px) {
+    [data-testid="stMainBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
+    .recommendation-meta { grid-template-columns: 1fr !important; }
+}
+</style>
+"""
+
+st.markdown(CREAM_CSS, unsafe_allow_html=True)
+
+
+# =============================================================================
+# HTML COMPONENT HELPERS
+# =============================================================================
+
+def render_html(content: str) -> None:
+    """Render intentional UI markup without passing it through Markdown."""
+    st.html(dedent(content).strip())
+
+def display_text(text: object) -> str:
+    """Escape data values before inserting them into intentional UI markup."""
+    return escape("" if text is None else str(text), quote=True)
+
+def display_paragraph(text: object) -> str:
+    """Keep explanations readable while preventing data from becoming page markup."""
+    return display_text(text).replace("\n", "<br>")
+
+def card(content_html: str, padding: str = "1.4rem 1.6rem", extra_style: str = "") -> str:
+    """Returns an HTML card wrapper."""
+    return dedent(f"""
+    <div class="advisor-card" style="
+        background: #FFFDF8;
+        border: 1px solid #DED5C8;
+        border-radius: 10px;
+        padding: {padding};
+        margin-bottom: 1rem;
+        {extra_style}
+    ">{content_html}</div>
+    """).strip()
+
+def label(text: str) -> str:
+    return f'<span style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;color:#75685D;text-transform:uppercase;">{display_text(text)}</span>'
+
+def value(text: str, size: str = "1rem") -> str:
+    return f'<span style="font-size:{size};font-weight:500;color:#2C241F;">{display_text(text)}</span>'
+
+def tag(text: str, color: str = "#8B6F4E") -> str:
+    return f'<span style="display:inline-block;background:#F2EBE0;color:{color};border:1px solid #DED5C8;border-radius:4px;padding:2px 8px;font-size:0.75rem;font-weight:500;margin:2px 3px 2px 0;">{display_text(text)}</span>'
+
+def status_dot(online: bool, text: str) -> str:
+    color = "#4A7C59" if online else "#A89887"
+    dot   = "●"
+    return f'<span style="color:{color};font-size:0.85rem;">{dot} {display_text(text)}</span>'
+
+def check_row(text: str, ok: bool = True) -> str:
+    icon  = "✓" if ok else "✗"
+    color = "#4A7C59" if ok else "#C0392B"
+    return f'<div style="color:{color};font-size:0.88rem;margin:3px 0;">{icon} {display_text(text)}</div>'
+
+def section_title(text: str, size: str = "1.05rem") -> str:
+    return f'''<div style="font-size:0.7rem;font-weight:700;letter-spacing:0.12em;
+    color:#75685D;text-transform:uppercase;border-bottom:1px solid #DED5C8;
+    padding-bottom:6px;margin-bottom:12px;">{text}</div>'''
+
+
+# =============================================================================
+# SYSTEM CHECK FUNCTIONS
+# =============================================================================
+
+def check_database() -> bool:
+    """Verify the SQLite database is accessible."""
+    try:
+        conn = get_connection()
+        conn.execute("SELECT 1 FROM students LIMIT 1")
+        conn.close()
+        return True
+    except Exception:
+        return False
+
+def check_agents() -> bool:
+    """Verify all three agents can be instantiated."""
+    try:
+        AcademicProfileAgent()
+        CourseAnalysisAgent()
+        RecommendationAgent()
+        return True
+    except Exception:
+        return False
+
+def check_langgraph() -> bool:
+    """Verify the LangGraph StateGraph can be built."""
+    try:
+        build_graph()
+        return True
+    except Exception:
+        return False
+
+def check_ollama() -> tuple:
+    """Returns (running: bool, model_ok: bool)."""
+    try:
+        running   = is_ollama_running()
+        model_ok  = is_model_available(OLLAMA_MODEL) if running else False
+        return running, model_ok
+    except Exception:
+        return False, False
+
+
+# =============================================================================
+# SESSION STATE INITIALISATION
+# =============================================================================
+
+def init_session():
+    defaults = {
+        "init_stage"      : 0,      # 0-8: init animation progress
+        "show_dashboard"  : False,  # True after init completes
+        "db_ok"           : False,
+        "agents_ok"       : False,
+        "langgraph_ok"    : False,
+        "ollama_ok"       : False,
+        "ollama_model_ok" : False,
+        "selected_student": None,
+        "profile"         : None,
+        "workflow_result" : None,
+        "all_students"    : [],
+        "pref_type"       : "interest",
+        "pref_value"      : "",
+        "pref_saved_msg"  : "",
+        "activity_log"    : [],
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+
+# =============================================================================
+# SCREEN 1 — AGENT INITIALIZATION
+# =============================================================================
+
+def show_init_screen():
+    """
+    Sequential initialization screen.
+    Uses st.session_state.init_stage (0-8) to show cumulative progress.
+    Each call to this function renders everything up to the current stage,
+    then advances the stage, waits briefly, and triggers st.rerun().
+    """
+    stage = st.session_state.init_stage
+
+    # ── Run the actual system check at stage 0 ────────────────────────────────
+    if stage == 0:
+        st.session_state.db_ok           = check_database()
+        st.session_state.agents_ok       = check_agents()
+        st.session_state.langgraph_ok    = check_langgraph()
+        ollama_r, ollama_m               = check_ollama()
+        st.session_state.ollama_ok       = ollama_r
+        st.session_state.ollama_model_ok = ollama_m
+        try:
+            students = get_all_students()
+            st.session_state.all_students = [dict(s) for s in students]
+        except Exception:
+            st.session_state.all_students = []
+
+    db_ok     = st.session_state.db_ok
+    agents_ok = st.session_state.agents_ok
+    lg_ok     = st.session_state.langgraph_ok
+    ol_ok     = st.session_state.ollama_ok
+    om_ok     = st.session_state.ollama_model_ok
+
+    # ── Layout ────────────────────────────────────────────────────────────────
+    _, col, _ = st.columns([1, 2, 1])
+
+    with col:
+        # Title
+        render_html("""
+        <div style="text-align:center; padding: 3rem 0 2rem 0;">
+            <div style="font-family:'Playfair Display',serif; font-size:2rem;
+                 font-weight:700; color:#2C241F; letter-spacing:0.04em;">
+                STUDENT ACADEMIC ADVISOR
+            </div>
+            <div style="font-size:0.88rem; color:#75685D; margin-top:8px;
+                 letter-spacing:0.06em; text-transform:uppercase;">
+                Initializing intelligent advisory system
+            </div>
+            <div style="width:60px;height:2px;background:#8B6F4E;margin:16px auto 0;"></div>
+        </div>
+        """)
+
+        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+
+        # ── Stage 1+: Agent 1 ONLINE ──────────────────────────────────────────
+        if stage >= 1:
+            color = "#4A7C59" if agents_ok else "#C0392B"
+            status_text = "ONLINE" if agents_ok else "ERROR"
+            render_html(card(f"""
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <div style="font-size:0.7rem;letter-spacing:0.1em;color:#75685D;text-transform:uppercase;">Agent 1</div>
+                    <div style="font-size:1rem;font-weight:600;color:#2C241F;margin-top:2px;">Academic Profile Agent</div>
+                </div>
+                <div style="background:{'#EBF4EE' if agents_ok else '#FDEAEA'};border:1px solid {'#4A7C59' if agents_ok else '#C0392B'};
+                     border-radius:20px;padding:4px 14px;font-size:0.78rem;font-weight:600;color:{color};">
+                    ● {status_text}
+                </div>
+            </div>
+            """, "1rem 1.4rem"))
+
+        # ── Stage 2+: Agent 2 ONLINE ──────────────────────────────────────────
+        if stage >= 2:
+            color = "#4A7C59" if agents_ok else "#C0392B"
+            status_text = "ONLINE" if agents_ok else "ERROR"
+            render_html(card(f"""
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <div style="font-size:0.7rem;letter-spacing:0.1em;color:#75685D;text-transform:uppercase;">Agent 2</div>
+                    <div style="font-size:1rem;font-weight:600;color:#2C241F;margin-top:2px;">Course Analysis Agent</div>
+                </div>
+                <div style="background:{'#EBF4EE' if agents_ok else '#FDEAEA'};border:1px solid {'#4A7C59' if agents_ok else '#C0392B'};
+                     border-radius:20px;padding:4px 14px;font-size:0.78rem;font-weight:600;color:{color};">
+                    ● {status_text}
+                </div>
+            </div>
+            """, "1rem 1.4rem"))
+
+        # ── Stage 3+: Agent 3 ONLINE ──────────────────────────────────────────
+        if stage >= 3:
+            color = "#4A7C59" if agents_ok else "#C0392B"
+            status_text = "ONLINE" if agents_ok else "ERROR"
+            render_html(card(f"""
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <div style="font-size:0.7rem;letter-spacing:0.1em;color:#75685D;text-transform:uppercase;">Agent 3</div>
+                    <div style="font-size:1rem;font-weight:600;color:#2C241F;margin-top:2px;">Recommendation Agent</div>
+                </div>
+                <div style="background:{'#EBF4EE' if agents_ok else '#FDEAEA'};border:1px solid {'#4A7C59' if agents_ok else '#C0392B'};
+                     border-radius:20px;padding:4px 14px;font-size:0.78rem;font-weight:600;color:{color};">
+                    ● {status_text}
+                </div>
+            </div>
+            """, "1rem 1.4rem"))
+
+        # ── Stage 4+: Connecting diagram ──────────────────────────────────────
+        if stage >= 4:
+            render_html("""
+            <div style="text-align:center;padding:0.6rem 0;color:#A89887;font-size:0.8rem;
+                 letter-spacing:0.06em;text-transform:uppercase;">
+                ─ ─ ─ &nbsp; Connecting Agents &nbsp; ─ ─ ─
+            </div>
+            """)
+            render_html(card("""
+            <div style="text-align:center;font-size:0.82rem;color:#75685D;line-height:2.2;">
+                Academic Profile Agent<br>
+                <span style="color:#8B6F4E;font-size:1rem;">│</span><br>
+                <span style="color:#8B6F4E;font-size:0.7rem;letter-spacing:0.08em;">CONNECTED</span><br>
+                <span style="color:#8B6F4E;font-size:1rem;">▼</span><br>
+                Course Analysis Agent<br>
+                <span style="color:#8B6F4E;font-size:1rem;">│</span><br>
+                <span style="color:#8B6F4E;font-size:0.7rem;letter-spacing:0.08em;">CONNECTED</span><br>
+                <span style="color:#8B6F4E;font-size:1rem;">▼</span><br>
+                Recommendation Agent
+            </div>
+            """, "1rem 1.4rem"))
+
+        # ── Stage 5+: DB + LangGraph status ───────────────────────────────────
+        if stage >= 5:
+            rows_html = ""
+            rows_html += check_row(f"Database Connected  ({db_ok})", db_ok)
+            rows_html += check_row(f"LangGraph Connected", lg_ok)
+            render_html(card(rows_html, "0.9rem 1.4rem"))
+
+        # ── Stage 6+: Ollama status ────────────────────────────────────────────
+        if stage >= 6:
+            if ol_ok and om_ok:
+                ollama_html  = check_row(f"Ollama Connected", True)
+                ollama_html += check_row(f"{OLLAMA_MODEL} Ready", True)
+            elif ol_ok and not om_ok:
+                ollama_html  = check_row("Ollama Connected", True)
+                ollama_html += f'<div style="color:#8B6914;font-size:0.88rem;margin:3px 0;">⚠ {OLLAMA_MODEL} not found — pull it with: ollama pull {OLLAMA_MODEL}</div>'
+            else:
+                ollama_html  = f'<div style="color:#8B6914;font-size:0.88rem;margin:3px 0;">⚠ Ollama unavailable — Rule-based explanation mode active</div>'
+            render_html(card(ollama_html, "0.9rem 1.4rem"))
+
+        # ── Stage 7+: ALL SYSTEMS READY ───────────────────────────────────────
+        if stage >= 7:
+            render_html("""
+            <div style="text-align:center;padding:1.2rem 0 0.5rem 0;">
+                <div style="font-size:0.7rem;letter-spacing:0.14em;text-transform:uppercase;
+                     color:#4A7C59;font-weight:700;">● ALL SYSTEMS READY</div>
+                <div style="font-size:0.8rem;color:#A89887;margin-top:8px;">
+                    Launching advisor dashboard…
+                </div>
+            </div>
+            """)
+
+    # ── Advance stage and rerun ────────────────────────────────────────────────
+    DELAYS = [0.0, 0.5, 0.45, 0.45, 0.5, 0.4, 0.5, 0.6, 0.7]
+
+    if stage < 7:
+        delay = DELAYS[stage] if stage < len(DELAYS) else 0.4
+        time.sleep(delay)
+        st.session_state.init_stage += 1
+        st.rerun()
+    else:
+        time.sleep(0.9)
+        st.session_state.init_stage    += 1
+        st.session_state.show_dashboard = True
+        # Set default student
+        if st.session_state.all_students:
+            st.session_state.selected_student = st.session_state.all_students[0]["student_id"]
+        st.rerun()
+
+
+# =============================================================================
+# SIDEBAR
+# =============================================================================
+
+def show_sidebar():
+    with st.sidebar:
+        # Brand
+        render_html("""
+        <div style="padding: 0.5rem 0 1.2rem 0;">
+            <div style="font-family:'Playfair Display',serif;font-size:1.1rem;
+                 font-weight:700;color:#2C241F;letter-spacing:0.02em;">
+                🎓 Academic Advisor
+            </div>
+            <div style="font-size:0.72rem;color:#A89887;letter-spacing:0.06em;
+                 text-transform:uppercase;margin-top:3px;">
+                AI-Powered Advisory System
+            </div>
+        </div>
+        """)
+
+        st.markdown('<hr style="border-color:#DED5C8;margin:0 0 1rem 0;">', unsafe_allow_html=True)
+
+        # System status
+        st.markdown(section_title("System Status"), unsafe_allow_html=True)
+
+        db_ok  = st.session_state.db_ok
+        lg_ok  = st.session_state.langgraph_ok
+        ol_ok  = st.session_state.ollama_ok
+        om_ok  = st.session_state.ollama_model_ok
+
+        render_html(f"""
+        <div style="font-size:0.85rem;line-height:2.1;">
+            {status_dot(db_ok,  "Database")}  <span style="color:#A89887;font-size:0.75rem;">SQLite</span><br>
+            {status_dot(lg_ok,  "LangGraph")} <span style="color:#A89887;font-size:0.75rem;">StateGraph</span><br>
+            {status_dot(ol_ok,  "Ollama")}    <span style="color:#A89887;font-size:0.75rem;">{OLLAMA_MODEL if om_ok else "unavailable"}</span>
+        </div>
+        """)
+
+        st.markdown('<hr style="border-color:#DED5C8;margin:1rem 0;">', unsafe_allow_html=True)
+
+        # Agents
+        st.markdown(section_title("Agents"), unsafe_allow_html=True)
+        agents_ok = st.session_state.agents_ok
+        render_html(f"""
+        <div style="font-size:0.85rem;line-height:2.1;">
+            {status_dot(agents_ok, "Academic Profile Agent")}<br>
+            {status_dot(agents_ok, "Course Analysis Agent")}<br>
+            {status_dot(agents_ok, "Recommendation Agent")}
+        </div>
+        """)
+
+        if not st.session_state.ollama_ok:
+            st.markdown('<hr style="border-color:#DED5C8;margin:1rem 0;">', unsafe_allow_html=True)
+            render_html(f"""
+            <div style="background:#FDF6E3;border:1px solid #DED5C8;border-radius:6px;
+                 padding:0.7rem;font-size:0.78rem;color:#8B6914;">
+                ⚠ Ollama offline<br>
+                <span style="color:#A89887;">Using rule-based explanations</span>
+            </div>
+            """)
+
+        st.markdown('<hr style="border-color:#DED5C8;margin:1rem 0;">', unsafe_allow_html=True)
+        st.markdown(section_title("Architecture"), unsafe_allow_html=True)
+        render_html("""
+        <div style="font-size:0.78rem;color:#75685D;line-height:2;">
+            Streamlit UI<br>
+            <span style="color:#DED5C8;">  ↓</span><br>
+            LangGraph<br>
+            <span style="color:#DED5C8;">  ↓</span><br>
+            Agent 1 → Agent 2 → Agent 3<br>
+            <span style="color:#DED5C8;">  ↓</span><br>
+            Ollama (explanations)<br>
+            <span style="color:#DED5C8;">  ↓</span><br>
+            PreferenceMemory (SQLite)
+        </div>
+        """)
+
+
+# =============================================================================
+# STUDENT PROFILE PANEL
+# =============================================================================
+
+def show_student_profile(profile: dict):
+    """Renders the student academic profile card."""
+
+    st.markdown(section_title("Student Profile"), unsafe_allow_html=True)
+
+    render_html(card(f"""
+    <div style="margin-bottom:0.8rem;">
+        <div style="font-family:'Playfair Display',serif;font-size:1.4rem;
+             font-weight:700;color:#2C241F;">{display_text(profile['name'])}</div>
+        <div style="font-size:0.82rem;color:#75685D;margin-top:3px;">
+             {display_text(profile['program'])} &nbsp;·&nbsp; Semester {display_text(profile['semester'])}
+        </div>
+    </div>
+    <hr style="border-color:#DED5C8;margin:0.8rem 0;">
+    <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;
+         color:#A89887;text-transform:uppercase;margin-bottom:6px;">Completed Subjects</div>
+    <div>{''.join(tag(s) for s in profile['completed_subjects'])}</div>
+    """))
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        interests_html = "".join(tag(i) for i in profile["interests"]) if profile["interests"] else '<span style="color:#A89887;font-size:0.85rem;">Not specified</span>'
+        render_html(card(f"""
+        {label("Interests")}<br><div style="margin-top:5px;">{interests_html}</div>
+        """, "1rem 1.2rem"))
+
+        render_html(card(f"""
+        {label("Career Goal")}<br>
+        <div style="margin-top:5px;">{value(profile['career_goal'])}</div>
+        """, "1rem 1.2rem"))
+
+    with c2:
+        render_html(card(f"""
+        {label("Preferred Domain")}<br>
+        <div style="margin-top:5px;">{value(profile['preferred_domain'])}</div>
+        """, "1rem 1.2rem"))
+
+        render_html(card(f"""
+        {label("Difficulty Preference")}<br>
+        <div style="margin-top:5px;">
+            {value(profile['difficulty_preference'])}
+            &nbsp;&nbsp;
+            {label("Style")} &nbsp;{value(profile['learning_style'])}
+        </div>
+        """, "1rem 1.2rem"))
+
+
+# =============================================================================
+# AGENT ACTIVITY LOG
+# =============================================================================
+
+def show_agent_activity(result: dict, profile: dict, analysis: list):
+    """Shows only high-level workflow completion status after a run."""
+
+    st.markdown(f"<div style='height:1rem'></div>", unsafe_allow_html=True)
+    st.markdown(section_title("Agent Activity"), unsafe_allow_html=True)
+
+    llm_used = result.get("llm_used", False)
+
+    rows = [
+        ("Academic Profile Agent",  True, "Profile retrieved"),
+        ("Course Analysis Agent",   True, "Electives analyzed"),
+        ("Recommendation Agent",    True, "Top 3 selected"),
+        ("Ollama",
+         True,
+         "Explanation generated" if llm_used else "Rule-based explanation mode active"),
+    ]
+
+    rows_html = ""
+    for agent_name, ok, detail in rows:
+        icon  = "✓" if ok else "✗"
+        color = "#4A7C59" if ok else "#C0392B"
+        rows_html += f"""
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;">
+            <span style="color:{color};font-size:0.95rem;font-weight:700;flex-shrink:0;">{icon}</span>
+            <div>
+                <div style="font-size:0.88rem;font-weight:600;color:#2C241F;">{display_text(agent_name)}</div>
+                <div style="font-size:0.78rem;color:#75685D;">{display_text(detail)}</div>
+            </div>
+        </div>
+        """
+
+    render_html(card(rows_html, "1rem 1.4rem"))
+
+
+# =============================================================================
+# RECOMMENDATION CARDS
+# =============================================================================
+
+def show_recommendations(recs: list, analysis: list):
+    """Renders Top 3 recommendation cards."""
+
+    if not recs:
+        render_html(card("""
+        <div style="text-align:center;padding:1rem;color:#75685D;font-size:0.9rem;">
+            No eligible electives found. Complete more prerequisite subjects.
+        </div>
+        """))
+        return
+
+    st.markdown(f"<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+    st.markdown(section_title("Recommended For You"), unsafe_allow_html=True)
+
+    # Build a lookup dict for analysis data by course_id
+    analysis_lookup = {c["course_id"]: c for c in analysis}
+
+    # Load elective metadata from DB for skills and career paths
+    try:
+        all_electives = get_all_electives()
+        elective_meta = {e["course_id"]: dict(e) for e in all_electives}
+    except Exception:
+        elective_meta = {}
+
+    rank_labels = ["01", "02", "03"]
+    score_colors = {
+        range(80, 101): "#4A7C59",
+        range(60, 80) : "#8B6914",
+        range(0,  60) : "#8B4E3A",
+    }
+
+    def score_color(s):
+        for r, c in score_colors.items():
+            if s in r:
+                return c
+        return "#75685D"
+
+    for rec in recs:
+        course_id   = rec["course_id"]
+        course_name = rec["course_name"]
+        domain      = rec["domain"]
+        difficulty  = rec["difficulty"]
+        score       = rec["score"]
+        explanation = rec["explanation"]
+        reasons     = rec.get("reasons", [])
+        src         = rec.get("explanation_source", "rule-based")
+        rank_label  = rank_labels[rec["rank"] - 1] if rec["rank"] <= 3 else str(rec["rank"])
+        sc          = score_color(score)
+
+        # Get skills and career paths from elective metadata
+        meta       = elective_meta.get(course_id, {})
+        skills_str = meta.get("skills", "")
+        careers_str = meta.get("career_paths", "")
+        desc_str   = meta.get("description", "")
+        prereq_str = meta.get("prerequisites", "")
+
+        skills_tags  = "".join(tag(s.strip()) for s in skills_str.split(",") if s.strip()) if skills_str else ""
+        career_tags  = "".join(tag(s.strip(), "#4A7C59") for s in careers_str.split(",") if s.strip()) if careers_str else ""
+        prereq_tags  = "".join(tag(s.strip(), "#A89887") for s in prereq_str.split(",") if s.strip()) if prereq_str else ""
+
+        # Determine alignment flags from Agent 2 reasons
+        has_interest = any("domain" in r.lower() or "interest" in r.lower() for r in reasons)
+        has_career   = any("career" in r.lower() for r in reasons)
+        has_prereq   = any("foundation" in r.lower() or "prerequisites met" in r.lower() for r in reasons)
+        has_pref     = any("difficulty" in r.lower() or "learning" in r.lower() for r in reasons)
+
+        # Explanation label
+        exp_label = f'<span style="font-size:0.7rem;color:#A89887;background:#F2EBE0;border:1px solid #DED5C8;border-radius:3px;padding:1px 6px;margin-left:6px;">{"LLM" if src == "llm" else "Rule-based"}</span>'
+
+        card_html = f"""
+        <div class="recommendation-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.8rem;">
+            <div>
+                <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.14em;color:#A89887;text-transform:uppercase;">
+                    {rank_label}
+                </div>
+                <div style="font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700;
+                     color:#2C241F;margin-top:2px;">{display_text(course_name)}</div>
+                <div style="font-size:0.8rem;color:#75685D;margin-top:3px;">
+                    {display_text(domain)} &nbsp;·&nbsp; {display_text(difficulty)}
+                </div>
+            </div>
+            <div class="recommendation-score" style="text-align:right;">
+                <div style="font-family:'Playfair Display',serif;font-size:2rem;font-weight:700;color:{sc};">{score}</div>
+                <div style="font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;color:#A89887;">/ 100 Match</div>
+            </div>
+        </div>
+        <hr style="border-color:#DED5C8;margin:0.8rem 0;">
+
+        <div style="margin-bottom:0.8rem;">
+            <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;color:#75685D;
+                 text-transform:uppercase;margin-bottom:5px;">Why this course? {exp_label}</div>
+            <div style="font-size:0.86rem;color:#2C241F;line-height:1.6;">{display_paragraph(explanation)}</div>
+        </div>
+
+        <div class="recommendation-meta" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:0.8rem;">
+            {check_row("Prerequisites satisfied", has_prereq)}
+            {check_row("Interest alignment", has_interest)}
+            {check_row("Career relevance", has_career)}
+            {check_row("Difficulty match", has_pref)}
+        </div>
+        """
+
+        if prereq_tags:
+            card_html += f'<div style="margin-bottom:0.5rem;">{label("Prerequisites")} <div style="margin-top:4px;">{prereq_tags}</div></div>'
+        if skills_tags:
+            card_html += f'<div style="margin-bottom:0.5rem;">{label("Skills Gained")} <div style="margin-top:4px;">{skills_tags}</div></div>'
+        if career_tags:
+            card_html += f'<div>{label("Career Paths")} <div style="margin-top:4px;">{career_tags}</div></div>'
+
+        card_html += "</div>"
+        render_html(card(card_html, "1.2rem 1.4rem"))
+
+
+# =============================================================================
+# PREFERENCES SECTION
+# =============================================================================
+
+def show_preferences_section(student_id: str):
+    """Renders the student memory/preferences panel."""
+
+    st.markdown(f"<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+    st.markdown(section_title("Your Preferences"), unsafe_allow_html=True)
+
+    memory = PreferenceMemory()
+    result = memory.get_preferences(student_id)
+    prefs  = result.get("preferences", [])
+
+    PREF_TYPE_LABELS = {
+        "interest"             : "Interest",
+        "career_goal"          : "Career Goal",
+        "learning_style"       : "Learning Style",
+        "preferred_domain"     : "Preferred Domain",
+        "difficulty_preference": "Difficulty Preference",
+        "course_format"        : "Course Format",
+    }
+
+    if prefs:
+        pref_html = ""
+        for p in prefs:
+            ptype  = p["preference_type"]
+            pval   = p["preference_value"]
+            plabel = PREF_TYPE_LABELS.get(ptype, ptype.replace("_", " ").title())
+            pref_html += f"""
+            <div style="display:flex;justify-content:space-between;align-items:center;
+                 padding:6px 0;border-bottom:1px solid #F0E8DC;">
+                <span style="font-size:0.78rem;color:#75685D;font-weight:500;">{plabel}</span>
+                 <span style="font-size:0.88rem;font-weight:600;color:#2C241F;">{display_text(pval)}</span>
+            </div>
+            """
+        render_html(card(pref_html, "0.8rem 1.2rem"))
+    else:
+        render_html(card("""
+        <div style="color:#A89887;font-size:0.85rem;text-align:center;padding:0.5rem 0;">
+            No preferences stored yet.
+        </div>
+        """, "0.8rem 1.2rem"))
+
+    # ── Add preference form ───────────────────────────────────────────────────
+    with st.expander("＋ Add / Update Preference", expanded=False):
+        pref_type_options = {
+            "Interest"             : "interest",
+            "Career Goal"          : "career_goal",
+            "Learning Style"       : "learning_style",
+            "Preferred Domain"     : "preferred_domain",
+            "Difficulty Preference": "difficulty_preference",
+            "Course Format"        : "course_format",
+        }
+
+        selected_label = st.selectbox(
+            "Preference Type",
+            options = list(pref_type_options.keys()),
+            key     = "pref_type_select"
+        )
+        pref_value = st.text_input(
+            "Preference Value",
+            placeholder = "e.g. Project-based, AI Engineer, Hard…",
+            key         = "pref_value_input"
+        )
+
+        if st.button("Save Preference", key="save_pref_btn"):
+            if pref_value.strip():
+                pref_type_key = pref_type_options[selected_label]
+                r = memory.save_preference(student_id, pref_type_key, pref_value.strip())
+                if r["success"]:
+                    action = r.get("action", "saved")
+                    st.session_state.pref_saved_msg = f"✓ Preference {action}: {selected_label} → {pref_value}"
+                    # Reload profile to reflect the new preference
+                    agent = AcademicProfileAgent()
+                    st.session_state.profile = agent.run(student_id)
+                    st.rerun()
+                else:
+                    st.error(r.get("message", "Could not save preference."))
+            else:
+                st.warning("Please enter a preference value.")
+
+    if st.session_state.pref_saved_msg:
+        render_html(f"""
+        <div style="background:#EBF4EE;border:1px solid #4A7C59;border-radius:6px;
+             padding:0.5rem 0.9rem;font-size:0.85rem;color:#4A7C59;margin-top:0.5rem;">
+            {display_text(st.session_state.pref_saved_msg)}
+        </div>
+        """)
+        # Also show USED FROM MEMORY note if we have a result
+        if st.session_state.workflow_result:
+            render_html("""
+            <div style="background:#F2EBE0;border:1px solid #DED5C8;border-radius:6px;
+                 padding:0.4rem 0.9rem;font-size:0.78rem;color:#8B6F4E;margin-top:4px;">
+                📌 USED FROM MEMORY — preferences will influence the next recommendation run
+            </div>
+            """)
+
+
+# =============================================================================
+# MAIN DASHBOARD
+# =============================================================================
+
+def show_main_dashboard():
+    """Renders the main advisor dashboard after initialization."""
+
+    show_sidebar()
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    render_html("""
+    <div style="padding: 1.8rem 0 0.5rem 0;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;">
+            <div>
+                <div style="font-family:'Playfair Display',serif;font-size:1.9rem;
+                     font-weight:700;color:#2C241F;letter-spacing:0.02em;">
+                    Student Academic Advisor
+                </div>
+                <div style="font-size:0.82rem;color:#75685D;margin-top:5px;">
+                    Personalized elective recommendations powered by three specialized AI agents.
+                </div>
+            </div>
+            <div style="text-align:right;">
+                <span style="font-size:0.78rem;color:#4A7C59;font-weight:600;
+                     letter-spacing:0.06em;text-transform:uppercase;">● System Online</span>
+            </div>
+        </div>
+        <div style="height:2px;background:linear-gradient(to right,#8B6F4E,#DED5C8,transparent);
+             margin-top:12px;margin-bottom:0.5rem;"></div>
+    </div>
+    """)
+
+    # ── Student selector ──────────────────────────────────────────────────────
+    students      = st.session_state.all_students
+    student_ids   = [s["student_id"] for s in students]
+    student_names = [f"{s['student_id']}  —  {s['name']}" for s in students]
+
+    if not student_ids:
+        st.error("No students found in the database. Please run main.py to seed the database.")
+        return
+
+    col_sel, col_btn = st.columns([3, 1])
+    with col_sel:
+        selected_idx = st.selectbox(
+            "Select Student",
+            options  = range(len(student_ids)),
+            format_func = lambda i: student_names[i],
+            key      = "student_selector",
+            index    = student_ids.index(st.session_state.selected_student)
+                       if st.session_state.selected_student in student_ids else 0
+        )
+        new_id = student_ids[selected_idx]
+        if new_id != st.session_state.selected_student:
+            st.session_state.selected_student = new_id
+            st.session_state.profile          = None
+            st.session_state.workflow_result  = None
+            st.session_state.pref_saved_msg   = ""
+            st.rerun()
+
+    # ── Load profile when student is selected ─────────────────────────────────
+    if st.session_state.profile is None or \
+       st.session_state.profile.get("student_id") != st.session_state.selected_student:
+        with st.spinner("Loading student profile…"):
+            agent = AcademicProfileAgent()
+            st.session_state.profile = agent.run(st.session_state.selected_student)
+
+    profile = st.session_state.profile
+
+    if profile.get("error"):
+        st.error(f"Could not load profile: {profile.get('message')}")
+        return
+
+    # ── Two-column layout ─────────────────────────────────────────────────────
+    left_col, right_col = st.columns([5, 7], gap="large")
+
+    with left_col:
+        show_student_profile(profile)
+        show_preferences_section(st.session_state.selected_student)
+
+    with right_col:
+        # Query input
+        st.markdown(section_title("Ask Your Academic Advisor"), unsafe_allow_html=True)
+
+        query = st.text_area(
+            label            = "Your question",
+            label_visibility = "collapsed",
+            placeholder = "Recommend electives based on my completed subjects and interests.",
+            height      = 90,
+            key         = "advisor_query"
+        )
+
+        run_btn = st.button("🎯  Get Recommendations", key="run_btn", use_container_width=True)
+
+        if run_btn:
+            if not st.session_state.selected_student:
+                st.warning("Please select a student first.")
+            else:
+                # ── Run the full LangGraph workflow ─────────────────────────────
+                st.session_state.pref_saved_msg  = ""
+                with st.spinner("Running advisor workflow…"):
+                    try:
+                        final_state = run_advisor(st.session_state.selected_student)
+                        st.session_state.workflow_result = final_state
+                        # Refresh profile from result (preferences may have changed)
+                        if not final_state.get("profile", {}).get("error"):
+                            st.session_state.profile = final_state["profile"]
+                    except Exception as e:
+                        st.error(f"Workflow error: {str(e)}")
+                        st.session_state.workflow_result = None
+
+        # ── Show results ───────────────────────────────────────────────────────
+        if st.session_state.workflow_result:
+            wr       = st.session_state.workflow_result
+            analysis = wr.get("course_analysis", [])
+            rec_data = wr.get("recommendation", {})
+            recs     = rec_data.get("recommendations", [])
+            p        = wr.get("profile", profile)
+
+            if rec_data.get("no_results"):
+                render_html(card(f"""
+                <div style="color:#75685D;font-size:0.9rem;text-align:center;padding:1rem;">
+                    {display_text(rec_data.get('message', 'No eligible courses found.'))}
+                </div>
+                """))
+            elif rec_data.get("error"):
+                st.error(rec_data.get("message", "An error occurred."))
+            else:
+                show_agent_activity(rec_data, p, analysis)
+                show_recommendations(recs, analysis)
+
+
+# =============================================================================
+# ENTRY POINT
+# =============================================================================
+
+def main():
+    init_session()
+
+    if not st.session_state.show_dashboard:
+        show_init_screen()
+    else:
+        show_main_dashboard()
+
+
+if __name__ == "__main__":
+    main()

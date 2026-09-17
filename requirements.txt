@@ -1,0 +1,25 @@
+# Student Academic Advisor Agent
+# ================================
+# Phase 1 Dependencies — Database Foundation
+#
+# Python built-in modules used in Phase 1:
+#   - sqlite3  (database)
+#   - json     (reading seed data files)
+#   - os       (file paths)
+#   - sys      (module path management)
+#
+# No third-party packages are needed for Phase 1.
+# The packages below will be added in upcoming phases:
+
+# ── Phase 2B: Agent Orchestration (INSTALLED) ────
+langgraph              # Multi-agent workflow orchestration (StateGraph)
+# langchain-core     # Core LangChain primitives (pulled in by langgraph)
+
+# ── Phase 2C: Local LLM (INSTALLED) ──────────────
+ollama                 # Official Python client for local Ollama LLM server
+
+# ── Phase 3A: Streamlit UI (INSTALLED) ───────────
+streamlit              # Web UI framework for the academic advisor dashboard
+
+# ── General Utilities (future phases) ────────────
+# python-dotenv      # Load environment variables from .env file

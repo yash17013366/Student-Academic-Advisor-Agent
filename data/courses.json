@@ -1,0 +1,102 @@
+[
+  {
+    "course_id": "EL101",
+    "course_name": "Natural Language Processing",
+    "description": "Study of computational techniques for processing and analyzing human language. Covers tokenization, sentiment analysis, text classification, and transformer models.",
+    "prerequisites": ["Python Programming", "Machine Learning"],
+    "domain": "Artificial Intelligence",
+    "skills": ["Text Processing", "Tokenization", "Sentiment Analysis", "Transformer Models", "NLTK", "SpaCy"],
+    "career_paths": ["NLP Engineer", "AI Researcher", "Conversational AI Developer", "Data Scientist"],
+    "difficulty": "Hard"
+  },
+  {
+    "course_id": "EL102",
+    "course_name": "Generative AI",
+    "description": "Introduction to generative models including GANs, VAEs, and Large Language Models. Covers prompt engineering, fine-tuning, and building AI-powered applications.",
+    "prerequisites": ["Python Programming", "Machine Learning"],
+    "domain": "Artificial Intelligence",
+    "skills": ["Prompt Engineering", "LLMs", "GANs", "Fine-tuning", "Hugging Face", "API Integration"],
+    "career_paths": ["Generative AI Engineer", "AI Product Developer", "ML Engineer", "AI Researcher"],
+    "difficulty": "Hard"
+  },
+  {
+    "course_id": "EL103",
+    "course_name": "Computer Vision",
+    "description": "Learn how computers interpret and understand visual information. Topics include image processing, CNNs, object detection, facial recognition, and image segmentation.",
+    "prerequisites": ["Python Programming", "Machine Learning"],
+    "domain": "Artificial Intelligence",
+    "skills": ["Image Processing", "CNN", "Object Detection", "OpenCV", "TensorFlow/PyTorch", "Image Segmentation"],
+    "career_paths": ["Computer Vision Engineer", "Robotics Engineer", "Autonomous Systems Developer", "AI Researcher"],
+    "difficulty": "Hard"
+  },
+  {
+    "course_id": "EL104",
+    "course_name": "Data Mining",
+    "description": "Techniques for discovering patterns, correlations, and insights from large datasets. Covers clustering, classification, association rules, and anomaly detection.",
+    "prerequisites": ["Python Programming", "Statistics"],
+    "domain": "Data Science",
+    "skills": ["Clustering", "Classification", "Association Rules", "Pattern Recognition", "Scikit-learn", "Data Preprocessing"],
+    "career_paths": ["Data Analyst", "Business Intelligence Analyst", "Data Scientist", "Market Research Analyst"],
+    "difficulty": "Medium"
+  },
+  {
+    "course_id": "EL105",
+    "course_name": "Big Data Analytics",
+    "description": "Processing and analyzing massive datasets using distributed computing frameworks. Covers Hadoop, Spark, data pipelines, and real-time stream processing.",
+    "prerequisites": ["Python Programming", "Database Management Systems"],
+    "domain": "Data Science",
+    "skills": ["Hadoop", "Apache Spark", "Data Pipelines", "Stream Processing", "Kafka", "SQL/NoSQL"],
+    "career_paths": ["Data Engineer", "Big Data Architect", "Analytics Engineer", "Platform Engineer"],
+    "difficulty": "Hard"
+  },
+  {
+    "course_id": "EL106",
+    "course_name": "Cloud Computing",
+    "description": "Fundamentals of cloud platforms including AWS, Azure, and GCP. Covers deployment, scalability, cloud storage, serverless computing, and infrastructure as code.",
+    "prerequisites": ["Database Management Systems", "Computer Networks"],
+    "domain": "Cloud Computing",
+    "skills": ["AWS/Azure/GCP", "Docker", "Kubernetes", "Serverless", "IaC (Terraform)", "Cloud Security"],
+    "career_paths": ["Cloud Architect", "DevOps Engineer", "Site Reliability Engineer", "Cloud Consultant"],
+    "difficulty": "Medium"
+  },
+  {
+    "course_id": "EL107",
+    "course_name": "Cyber Security",
+    "description": "Principles and practices of protecting digital systems and networks. Covers ethical hacking, penetration testing, cryptography, network security, and incident response.",
+    "prerequisites": ["Computer Networks", "Operating Systems"],
+    "domain": "Cyber Security",
+    "skills": ["Penetration Testing", "Cryptography", "Network Security", "Vulnerability Assessment", "Ethical Hacking", "SIEM Tools"],
+    "career_paths": ["Security Analyst", "Penetration Tester", "Security Architect", "Incident Response Analyst"],
+    "difficulty": "Hard"
+  },
+  {
+    "course_id": "EL108",
+    "course_name": "Full Stack Development",
+    "description": "End-to-end web application development covering front-end (React.js) and back-end (Node.js/Django) technologies, REST APIs, and database integration.",
+    "prerequisites": ["Web Development", "Database Management Systems"],
+    "domain": "Software Development",
+    "skills": ["React.js", "Node.js", "REST APIs", "MongoDB", "Git/GitHub", "Responsive Design"],
+    "career_paths": ["Full Stack Developer", "Software Engineer", "Web Application Developer", "Tech Lead"],
+    "difficulty": "Medium"
+  },
+  {
+    "course_id": "EL109",
+    "course_name": "Blockchain Technology",
+    "description": "Distributed ledger technology, smart contracts, and decentralized applications. Covers Ethereum, Solidity programming, consensus mechanisms, and DeFi concepts.",
+    "prerequisites": ["Data Structures", "Database Management Systems"],
+    "domain": "Blockchain",
+    "skills": ["Smart Contracts", "Solidity", "Ethereum", "DeFi", "Consensus Mechanisms", "Web3.js"],
+    "career_paths": ["Blockchain Developer", "Smart Contract Engineer", "Web3 Developer", "Fintech Engineer"],
+    "difficulty": "Hard"
+  },
+  {
+    "course_id": "EL110",
+    "course_name": "Internet of Things",
+    "description": "Design and development of connected device ecosystems. Covers sensor integration, embedded programming, MQTT protocol, edge computing, and cloud connectivity.",
+    "prerequisites": ["Computer Networks", "Python Programming"],
+    "domain": "IoT",
+    "skills": ["Sensor Integration", "MQTT", "Raspberry Pi/Arduino", "Edge Computing", "Embedded Python", "Cloud IoT"],
+    "career_paths": ["IoT Developer", "Embedded Systems Engineer", "Smart Systems Architect", "Industrial IoT Engineer"],
+    "difficulty": "Medium"
+  }
+]

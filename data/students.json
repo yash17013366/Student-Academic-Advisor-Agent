@@ -1,0 +1,153 @@
+[
+  {
+    "student_id": "S001",
+    "name": "Aanya Sharma",
+    "program": "B.Tech Computer Science",
+    "semester": 6,
+    "interests": ["Artificial Intelligence", "Machine Learning"],
+    "completed_subjects": [
+      {"subject_name": "Python Programming", "grade": "A"},
+      {"subject_name": "Data Structures", "grade": "A"},
+      {"subject_name": "Mathematics", "grade": "B"},
+      {"subject_name": "Statistics", "grade": "A"},
+      {"subject_name": "Machine Learning", "grade": "A"},
+      {"subject_name": "Database Management Systems", "grade": "B"}
+    ]
+  },
+  {
+    "student_id": "S002",
+    "name": "Rohan Mehta",
+    "program": "B.Tech Computer Science",
+    "semester": 6,
+    "interests": ["Generative AI", "Deep Learning"],
+    "completed_subjects": [
+      {"subject_name": "Python Programming", "grade": "A"},
+      {"subject_name": "Mathematics", "grade": "A"},
+      {"subject_name": "Statistics", "grade": "B"},
+      {"subject_name": "Machine Learning", "grade": "A"},
+      {"subject_name": "Data Structures", "grade": "B"},
+      {"subject_name": "Object Oriented Programming", "grade": "A"}
+    ]
+  },
+  {
+    "student_id": "S003",
+    "name": "Priya Nair",
+    "program": "B.Tech Information Technology",
+    "semester": 5,
+    "interests": ["Data Science", "Analytics"],
+    "completed_subjects": [
+      {"subject_name": "Python Programming", "grade": "B"},
+      {"subject_name": "Statistics", "grade": "A"},
+      {"subject_name": "Mathematics", "grade": "A"},
+      {"subject_name": "Database Management Systems", "grade": "A"},
+      {"subject_name": "Data Structures", "grade": "B"},
+      {"subject_name": "Object Oriented Programming", "grade": "B"}
+    ]
+  },
+  {
+    "student_id": "S004",
+    "name": "Karan Verma",
+    "program": "B.Tech Computer Science",
+    "semester": 6,
+    "interests": ["Cloud Computing", "DevOps"],
+    "completed_subjects": [
+      {"subject_name": "Computer Networks", "grade": "A"},
+      {"subject_name": "Database Management Systems", "grade": "A"},
+      {"subject_name": "Operating Systems", "grade": "A"},
+      {"subject_name": "Python Programming", "grade": "B"},
+      {"subject_name": "Data Structures", "grade": "B"},
+      {"subject_name": "Mathematics", "grade": "C"}
+    ]
+  },
+  {
+    "student_id": "S005",
+    "name": "Sneha Patil",
+    "program": "B.Tech Computer Science",
+    "semester": 6,
+    "interests": ["Cyber Security", "Ethical Hacking"],
+    "completed_subjects": [
+      {"subject_name": "Computer Networks", "grade": "A"},
+      {"subject_name": "Operating Systems", "grade": "A"},
+      {"subject_name": "Data Structures", "grade": "B"},
+      {"subject_name": "Python Programming", "grade": "B"},
+      {"subject_name": "Database Management Systems", "grade": "B"},
+      {"subject_name": "Mathematics", "grade": "B"}
+    ]
+  },
+  {
+    "student_id": "S006",
+    "name": "Arjun Kulkarni",
+    "program": "B.Tech Information Technology",
+    "semester": 5,
+    "interests": ["Web Development", "Software Engineering"],
+    "completed_subjects": [
+      {"subject_name": "Web Development", "grade": "A"},
+      {"subject_name": "Database Management Systems", "grade": "A"},
+      {"subject_name": "Object Oriented Programming", "grade": "A"},
+      {"subject_name": "Data Structures", "grade": "B"},
+      {"subject_name": "Python Programming", "grade": "B"},
+      {"subject_name": "Mathematics", "grade": "C"}
+    ]
+  },
+  {
+    "student_id": "S007",
+    "name": "Meera Joshi",
+    "program": "B.Tech Computer Science",
+    "semester": 6,
+    "interests": ["Data Engineering", "Big Data"],
+    "completed_subjects": [
+      {"subject_name": "Python Programming", "grade": "A"},
+      {"subject_name": "Database Management Systems", "grade": "A"},
+      {"subject_name": "Data Structures", "grade": "A"},
+      {"subject_name": "Statistics", "grade": "B"},
+      {"subject_name": "Computer Networks", "grade": "B"},
+      {"subject_name": "Mathematics", "grade": "B"},
+      {"subject_name": "Operating Systems", "grade": "B"}
+    ]
+  },
+  {
+    "student_id": "S008",
+    "name": "Dev Pandey",
+    "program": "B.Tech Electronics & Computer",
+    "semester": 5,
+    "interests": ["IoT", "Embedded Systems"],
+    "completed_subjects": [
+      {"subject_name": "Computer Networks", "grade": "A"},
+      {"subject_name": "Python Programming", "grade": "A"},
+      {"subject_name": "Operating Systems", "grade": "B"},
+      {"subject_name": "Data Structures", "grade": "B"},
+      {"subject_name": "Mathematics", "grade": "A"},
+      {"subject_name": "Object Oriented Programming", "grade": "B"}
+    ]
+  },
+  {
+    "student_id": "S009",
+    "name": "Ishaan Tiwari",
+    "program": "B.Tech Computer Science",
+    "semester": 6,
+    "interests": ["Blockchain", "Fintech"],
+    "completed_subjects": [
+      {"subject_name": "Data Structures", "grade": "A"},
+      {"subject_name": "Database Management Systems", "grade": "A"},
+      {"subject_name": "Python Programming", "grade": "B"},
+      {"subject_name": "Mathematics", "grade": "A"},
+      {"subject_name": "Object Oriented Programming", "grade": "A"},
+      {"subject_name": "Computer Networks", "grade": "B"}
+    ]
+  },
+  {
+    "student_id": "S010",
+    "name": "Nisha Gupta",
+    "program": "B.Tech Information Technology",
+    "semester": 5,
+    "interests": ["Computer Vision", "Robotics"],
+    "completed_subjects": [
+      {"subject_name": "Python Programming", "grade": "A"},
+      {"subject_name": "Machine Learning", "grade": "B"},
+      {"subject_name": "Mathematics", "grade": "A"},
+      {"subject_name": "Statistics", "grade": "A"},
+      {"subject_name": "Data Structures", "grade": "A"},
+      {"subject_name": "Object Oriented Programming", "grade": "B"}
+    ]
+  }
+]

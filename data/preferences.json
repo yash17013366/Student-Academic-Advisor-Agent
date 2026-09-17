@@ -1,0 +1,102 @@
+[
+  {
+    "student_id": "S001",
+    "preferences": [
+      {"preference_type": "interest", "preference_value": "Natural Language Processing"},
+      {"preference_type": "career_goal", "preference_value": "AI Engineer"},
+      {"preference_type": "learning_style", "preference_value": "Project-based"},
+      {"preference_type": "preferred_domain", "preference_value": "Artificial Intelligence"},
+      {"preference_type": "difficulty_preference", "preference_value": "Hard"}
+    ]
+  },
+  {
+    "student_id": "S002",
+    "preferences": [
+      {"preference_type": "interest", "preference_value": "Large Language Models"},
+      {"preference_type": "career_goal", "preference_value": "Generative AI Engineer"},
+      {"preference_type": "learning_style", "preference_value": "Practical"},
+      {"preference_type": "preferred_domain", "preference_value": "Artificial Intelligence"},
+      {"preference_type": "difficulty_preference", "preference_value": "Hard"}
+    ]
+  },
+  {
+    "student_id": "S003",
+    "preferences": [
+      {"preference_type": "interest", "preference_value": "Data Analysis"},
+      {"preference_type": "career_goal", "preference_value": "Data Scientist"},
+      {"preference_type": "learning_style", "preference_value": "Hands-on"},
+      {"preference_type": "preferred_domain", "preference_value": "Data Science"},
+      {"preference_type": "difficulty_preference", "preference_value": "Medium"}
+    ]
+  },
+  {
+    "student_id": "S004",
+    "preferences": [
+      {"preference_type": "interest", "preference_value": "Cloud Infrastructure"},
+      {"preference_type": "career_goal", "preference_value": "Cloud Architect"},
+      {"preference_type": "learning_style", "preference_value": "Project-based"},
+      {"preference_type": "preferred_domain", "preference_value": "Cloud Computing"},
+      {"preference_type": "difficulty_preference", "preference_value": "Medium"}
+    ]
+  },
+  {
+    "student_id": "S005",
+    "preferences": [
+      {"preference_type": "interest", "preference_value": "Ethical Hacking"},
+      {"preference_type": "career_goal", "preference_value": "Security Analyst"},
+      {"preference_type": "learning_style", "preference_value": "Practical"},
+      {"preference_type": "preferred_domain", "preference_value": "Cyber Security"},
+      {"preference_type": "difficulty_preference", "preference_value": "Hard"}
+    ]
+  },
+  {
+    "student_id": "S006",
+    "preferences": [
+      {"preference_type": "interest", "preference_value": "Frontend Development"},
+      {"preference_type": "career_goal", "preference_value": "Full Stack Developer"},
+      {"preference_type": "learning_style", "preference_value": "Project-based"},
+      {"preference_type": "preferred_domain", "preference_value": "Software Development"},
+      {"preference_type": "difficulty_preference", "preference_value": "Medium"}
+    ]
+  },
+  {
+    "student_id": "S007",
+    "preferences": [
+      {"preference_type": "interest", "preference_value": "Data Pipelines"},
+      {"preference_type": "career_goal", "preference_value": "Data Engineer"},
+      {"preference_type": "learning_style", "preference_value": "Hands-on"},
+      {"preference_type": "preferred_domain", "preference_value": "Data Science"},
+      {"preference_type": "difficulty_preference", "preference_value": "Hard"}
+    ]
+  },
+  {
+    "student_id": "S008",
+    "preferences": [
+      {"preference_type": "interest", "preference_value": "Smart Devices"},
+      {"preference_type": "career_goal", "preference_value": "IoT Developer"},
+      {"preference_type": "learning_style", "preference_value": "Practical"},
+      {"preference_type": "preferred_domain", "preference_value": "IoT"},
+      {"preference_type": "difficulty_preference", "preference_value": "Medium"}
+    ]
+  },
+  {
+    "student_id": "S009",
+    "preferences": [
+      {"preference_type": "interest", "preference_value": "Decentralized Finance"},
+      {"preference_type": "career_goal", "preference_value": "Blockchain Developer"},
+      {"preference_type": "learning_style", "preference_value": "Project-based"},
+      {"preference_type": "preferred_domain", "preference_value": "Blockchain"},
+      {"preference_type": "difficulty_preference", "preference_value": "Hard"}
+    ]
+  },
+  {
+    "student_id": "S010",
+    "preferences": [
+      {"preference_type": "interest", "preference_value": "Image Recognition"},
+      {"preference_type": "career_goal", "preference_value": "Computer Vision Engineer"},
+      {"preference_type": "learning_style", "preference_value": "Research-oriented"},
+      {"preference_type": "preferred_domain", "preference_value": "Artificial Intelligence"},
+      {"preference_type": "difficulty_preference", "preference_value": "Hard"}
+    ]
+  }
+]
