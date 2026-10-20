@@ -769,6 +769,104 @@ def show_sidebar():
 
 
 # =============================================================================
+# TOP RECOMMENDATIONS DISPLAY
+# =============================================================================
+
+def show_recommendations(recs: list, analysis: list):
+    """Renders Top 3 recommendation cards with high visual polish."""
+    if not recs:
+        render_html(card("""
+        <div style="text-align:center;padding:1.5rem;color:#64748B;font-size:0.9rem;">
+            No eligible electives found. Complete more prerequisite subjects to unlock advanced electives.
+        </div>
+        """))
+        return
+
+    try:
+        all_electives = get_all_electives()
+        elective_meta = {e["course_id"]: dict(e) for e in all_electives}
+    except Exception:
+        elective_meta = {}
+
+    rank_labels = ["01", "02", "03"]
+
+    for rec in recs:
+        course_id   = rec["course_id"]
+        course_name = rec["course_name"]
+        domain      = rec["domain"]
+        difficulty  = rec["difficulty"]
+        score       = rec["score"]
+        explanation = rec["explanation"]
+        reasons     = rec.get("reasons", [])
+        src         = rec.get("explanation_source", "rule-based")
+        rank_label  = rank_labels[rec["rank"] - 1] if rec["rank"] <= 3 else str(rec["rank"])
+
+        sc_color = "#15803D" if score >= 80 else ("#B45309" if score >= 60 else "#8B4E3A")
+
+        meta        = elective_meta.get(course_id, {})
+        skills_str  = meta.get("skills", "")
+        careers_str = meta.get("career_paths", "")
+        prereq_str  = meta.get("prerequisites", "")
+
+        skills_tags = "".join(tag(s.strip()) for s in skills_str.split(",") if s.strip()) if skills_str else ""
+        career_tags = "".join(tag(s.strip(), "#15803D", "#F0FDF4", "#BBF7D0") for s in careers_str.split(",") if s.strip()) if careers_str else ""
+        prereq_tags = "".join(tag(s.strip(), "#475569", "#F8F6F0", "#E8E1D5") for s in prereq_str.split(",") if s.strip()) if prereq_str else ""
+
+        has_interest = any("domain" in r.lower() or "interest" in r.lower() for r in reasons)
+        has_career   = any("career" in r.lower() for r in reasons)
+        has_prereq   = any("foundation" in r.lower() or "prerequisites met" in r.lower() for r in reasons)
+        has_pref     = any("difficulty" in r.lower() or "learning" in r.lower() for r in reasons)
+
+        exp_badge = f'<span style="font-size:0.68rem;color:#8B6F4E;background:#F7F2EB;border:1px solid #E8DFD3;border-radius:4px;padding:2px 7px;font-weight:700;margin-left:6px;">{"LLM SYNTHESIZED" if src == "llm" else "RULE ENGINE"}</span>'
+
+        card_html = f"""
+        <div style="border-left: 4px solid #8B6F4E; padding-left: 4px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.7rem;">
+                <div>
+                    <span style="font-size:0.68rem;font-weight:800;letter-spacing:0.12em;color:#8B6F4E;text-transform:uppercase;">RECOMMENDATION #{rank_label}</span>
+                    <div style="font-family:'Playfair Display',serif;font-size:1.35rem;font-weight:700;color:#0F172A;margin-top:2px;">
+                        {display_text(course_name)}
+                    </div>
+                    <div style="font-size:0.82rem;color:#475569;margin-top:2px;">
+                        {display_text(domain)} &nbsp;·&nbsp; Difficulty: <strong>{display_text(difficulty)}</strong>
+                    </div>
+                </div>
+                <div style="text-align:right;min-width:85px;">
+                    <div style="font-family:'Playfair Display',serif;font-size:1.9rem;font-weight:700;color:{sc_color};line-height:1;">{score}</div>
+                    <div style="font-size:0.65rem;letter-spacing:0.08em;text-transform:uppercase;color:#64748B;font-weight:600;margin-top:2px;">/ 100 Match</div>
+                </div>
+            </div>
+
+            <div style="background:#FAF8F5;border:1px solid #EFEAE1;border-radius:8px;padding:12px 14px;margin-bottom:0.8rem;">
+                <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;color:#64748B;text-transform:uppercase;margin-bottom:4px;">
+                    Advisory Rationale {exp_badge}
+                </div>
+                <div style="font-size:0.88rem;color:#0F172A;line-height:1.6;">
+                    {display_paragraph(explanation)}
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:0.8rem;background:#FFFFFF;padding:4px 0;">
+                {check_row("Prerequisites Satisfied", has_prereq)}
+                {check_row("Domain & Interest Alignment", has_interest)}
+                {check_row("Career Path Relevance", has_career)}
+                {check_row("Difficulty Profile Match", has_pref)}
+            </div>
+        """
+
+        if prereq_tags:
+            card_html += f'<div style="margin-bottom:0.5rem;">{label("Prerequisites Satisfied")} <div style="margin-top:3px;">{prereq_tags}</div></div>'
+        if skills_tags:
+            card_html += f'<div style="margin-bottom:0.5rem;">{label("Target Skills")} <div style="margin-top:3px;">{skills_tags}</div></div>'
+        if career_tags:
+            card_html += f'<div>{label("Career Alignment")} <div style="margin-top:3px;">{career_tags}</div></div>'
+
+        card_html += "</div>"
+        render_html(card(card_html, "1.2rem 1.4rem"))
+
+
+
+# =============================================================================
 # STUDENT PROFILE PANEL
 # =============================================================================
 
