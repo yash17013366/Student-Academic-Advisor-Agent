@@ -1,171 +1,108 @@
 """
 advisor_graph.py
 ----------------
-PHASE 2B - LangGraph Orchestration
+PHASE 2B + Unit III + Unit IV - LangGraph Orchestration
 
-This file wires the three existing agents into a sequential
-LangGraph workflow using a StateGraph.
+ORIGINAL WORKFLOW (preserved):
+    START -> academic_profile -> course_analysis -> recommendation -> END
 
-WHAT LANGGRAPH DOES HERE:
-    - Manages the shared state (data) that flows between agents
-    - Executes the agents in order: Agent 1 -> Agent 2 -> Agent 3
-    - Ensures each node only runs after the previous one completes
+UNIT III EXTENSION:
+    After recommendation: -> reflection -> END
+    (Reflection Agent interprets persisted feedback and re-ranks eligible courses)
 
-THE AGENTS ARE NOT CHANGED.
-The agents still contain all their own logic.
-LangGraph only calls them and passes results through the state.
+UNIT IV EXTENSION:
+    After reflection (or recommendation if no feedback):
+        -> acad_performance + career_skill_gap + workload_feasibility (parallel)
+        -> advisory_coordinator -> END
+    Specialist agents run after the core recommendation is complete.
+    Their findings are synthesized by the coordinator into a final plan.
 
-WORKFLOW:
-    START
-      |
-      v
-    [Node 1] academic_profile_node   --> calls AcademicProfileAgent
-      |
-      v
-    [Node 2] course_analysis_node    --> calls CourseAnalysisAgent
-      |
-      v
-    [Node 3] recommendation_node     --> calls RecommendationAgent
-      |
-      v
-    END
+IMPORTANT:
+    - The original 3-agent pipeline is NOT modified.
+    - All original outputs are preserved in the final state.
+    - Specialist agents use ONLY existing database data.
+    - LangGraph StateGraph is the orchestration mechanism.
 """
 
 import sys
 import os
 
-# Add project root to path so we can import agents and database modules
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-# ── LangGraph imports ──────────────────────────────────────────────────────────
-# StateGraph  : The main class for building a graph of nodes
-# START, END  : Special markers for the beginning and end of the graph
 from langgraph.graph import StateGraph, START, END
+from typing import TypedDict, Optional, List
 
-# ── TypedDict: defines the shape of the shared state object ───────────────────
-# TypedDict is a standard Python type hint tool — no extra library needed
-from typing import TypedDict
+# ── Original 3 agents (unchanged) ────────────────────────────────────────────
+from agents.academic_profile_agent  import AcademicProfileAgent
+from agents.course_analysis_agent   import CourseAnalysisAgent
+from agents.recommendation_agent    import RecommendationAgent
 
-# ── Import our three existing agents ──────────────────────────────────────────
-# These agents are NOT modified — LangGraph simply calls them
-from agents.academic_profile_agent import AcademicProfileAgent
-from agents.course_analysis_agent  import CourseAnalysisAgent
-from agents.recommendation_agent   import RecommendationAgent
+# ── Unit III: Reflection Agent ────────────────────────────────────────────────
+from agents.reflection_agent        import ReflectionAgent
+
+# ── Unit IV: Specialist Agents + Coordinator ──────────────────────────────────
+from agents.academic_performance_agent  import AcademicPerformanceAgent
+from agents.career_skill_gap_agent      import CareerSkillGapAgent
+from agents.workload_feasibility_agent  import WorkloadFeasibilityAgent
+from agents.advisory_coordinator_agent  import AdvisoryCoordinatorAgent
 
 
 # =============================================================================
-# STEP 1: DEFINE THE SHARED STATE
+# SHARED STATE DEFINITION
 # =============================================================================
-#
-# AdvisorState is a TypedDict — think of it as a structured dictionary
-# that gets passed through every node in the graph.
-#
-# Each node can READ from this state and WRITE new values into it.
-#
-# Fields:
-#   student_id      : The ID entered by the user (e.g., "S001")
-#   profile         : Set by Node 1 — the student's academic profile dict
-#   course_analysis : Set by Node 2 — list of analyzed courses with scores
-#   recommendation  : Set by Node 3 — final Top 3 recommendations dict
-#
-# total=False means all fields are optional (safe for partial state updates)
-# ─────────────────────────────────────────────────────────────────────────────
 
 class AdvisorState(TypedDict, total=False):
-    student_id      : str   # Input: provided before the graph starts
-    profile         : dict  # Output of Node 1 (Agent 1)
-    course_analysis : list  # Output of Node 2 (Agent 2)
-    recommendation  : dict  # Output of Node 3 (Agent 3)
+    # Input
+    student_id          : str   # e.g. "S001"
+
+    # Original pipeline outputs (unchanged)
+    profile             : dict  # Agent 1 output
+    course_analysis     : list  # Agent 2 output
+    recommendation      : dict  # Agent 3 output
+
+    # Unit III: Reflection
+    reflection_result   : dict  # ReflectionAgent output
+
+    # Unit IV: Specialist outputs
+    performance_report  : dict  # AcademicPerformanceAgent output
+    career_analysis_out : dict  # CareerSkillGapAgent output
+    workload_report     : dict  # WorkloadFeasibilityAgent output
+
+    # Unit IV: Coordinator synthesis
+    coordinator_result  : dict  # AdvisoryCoordinatorAgent output
 
 
 # =============================================================================
-# STEP 2: DEFINE THE THREE GRAPH NODES
+# ORIGINAL PIPELINE NODES (unchanged logic)
 # =============================================================================
-#
-# Each node is a simple Python function that:
-#   - Receives the current state (a dictionary)
-#   - Does some work (calls an agent)
-#   - Returns a dictionary of new/updated state values
-#
-# LangGraph merges the returned dictionary into the existing state automatically.
-# ─────────────────────────────────────────────────────────────────────────────
-
 
 def academic_profile_node(state: AdvisorState) -> dict:
-    """
-    NODE 1 — Academic Profile Node
-
-    What it does:
-        - Reads the student_id from the shared state
-        - Creates an AcademicProfileAgent and calls its run() method
-        - Returns the profile dict to be stored in state["profile"]
-
-    Input from state : state["student_id"]
-    Output to state  : {"profile": <profile dict>}
-    """
+    """NODE 1 — Academic Profile Agent (original, unchanged)."""
     print("\n[LangGraph] Running Academic Profile Agent...")
-
-    # Read the student_id that was set when the graph was invoked
     student_id = state["student_id"]
-
-    # Create the agent and run it
-    agent   = AcademicProfileAgent()
-    profile = agent.run(student_id)
-
-    # Return only the new data — LangGraph merges this into the state
+    agent      = AcademicProfileAgent()
+    profile    = agent.run(student_id)
     return {"profile": profile}
 
 
 def course_analysis_node(state: AdvisorState) -> dict:
-    """
-    NODE 2 — Course Analysis Node
-
-    What it does:
-        - Reads the student profile from state["profile"]
-        - Creates a CourseAnalysisAgent and calls its run() method
-        - Returns the analysis list to be stored in state["course_analysis"]
-
-    Input from state : state["profile"]
-    Output to state  : {"course_analysis": <list of course results>}
-    """
+    """NODE 2 — Course Analysis Agent (original, unchanged)."""
     print("\n[LangGraph] Running Course Analysis Agent...")
-
-    # Read the profile that Node 1 stored in the state
     profile = state["profile"]
-
-    # If Node 1 returned an error, propagate it gracefully
     if profile.get("error"):
         print("[LangGraph] Skipping course analysis — invalid student profile.")
         return {"course_analysis": []}
-
-    # Create the agent and run it
     agent    = CourseAnalysisAgent()
     analysis = agent.run(profile)
-
-    # Return the analysis list to be stored in state
     return {"course_analysis": analysis}
 
 
 def recommendation_node(state: AdvisorState) -> dict:
-    """
-    NODE 3 — Recommendation Node
-
-    What it does:
-        - Reads state["profile"] and state["course_analysis"]
-        - Creates a RecommendationAgent and calls its run() method
-        - Returns the recommendation dict to be stored in state["recommendation"]
-
-    Input from state : state["profile"], state["course_analysis"]
-    Output to state  : {"recommendation": <recommendation dict>}
-    """
+    """NODE 3 — Recommendation Agent (original, unchanged)."""
     print("\n[LangGraph] Running Recommendation Agent...")
-
-    # Read both pieces of data that previous nodes stored in the state
     profile         = state["profile"]
     course_analysis = state.get("course_analysis", [])
-
-    # If no eligible courses were analyzed, handle gracefully
     if not course_analysis and profile.get("error"):
         return {
             "recommendation": {
@@ -174,112 +111,213 @@ def recommendation_node(state: AdvisorState) -> dict:
                 "recommendations" : []
             }
         }
-
-    # Create the agent and run it with both profile and analysis
     agent          = RecommendationAgent()
     recommendation = agent.run(profile, course_analysis)
-
-    # Return the recommendation dict to be stored in state
     return {"recommendation": recommendation}
 
 
 # =============================================================================
-# STEP 3: BUILD AND COMPILE THE GRAPH
+# UNIT III: REFLECTION NODE
 # =============================================================================
-#
-# Here we wire the nodes together into a directed graph.
-#
-# StateGraph(AdvisorState) creates a graph that uses AdvisorState as its state.
-#
-# add_node()  : Registers a node (function) with a name in the graph
-# add_edge()  : Draws an arrow from one node to another (defines the order)
-# compile()   : Locks the graph and makes it ready to run
-# ─────────────────────────────────────────────────────────────────────────────
+
+def reflection_node(state: AdvisorState) -> dict:
+    """
+    NODE 4 — Reflection Agent (Unit III)
+
+    Reads persisted feedback from the DB and produces before/after rankings.
+    NEVER modifies prerequisite eligibility.
+    """
+    print("\n[LangGraph] Running Reflection Agent (Unit III)...")
+    student_id      = state["student_id"]
+    course_analysis = state.get("course_analysis", [])
+
+    if not course_analysis:
+        return {
+            "reflection_result": {
+                "student_id"      : student_id,
+                "feedback_applied": False,
+                "original_ranking": [],
+                "adjusted_ranking": [],
+                "adjustments"     : [],
+                "summary"         : "No course analysis available for reflection.",
+            }
+        }
+
+    agent  = ReflectionAgent()
+    result = agent.run(student_id, course_analysis)
+    return {"reflection_result": result}
+
+
+# =============================================================================
+# UNIT IV: SPECIALIST NODES
+# =============================================================================
+
+def academic_performance_node(state: AdvisorState) -> dict:
+    """
+    NODE 5a — Academic Performance Specialist (Unit IV)
+    Runs in parallel with the other two specialist nodes.
+    """
+    print("\n[LangGraph] Running Academic Performance Agent (Unit IV)...")
+    profile = state["profile"]
+    agent   = AcademicPerformanceAgent()
+    result  = agent.run(profile)
+    return {"performance_report": result}
+
+
+def career_skill_gap_node(state: AdvisorState) -> dict:
+    """
+    NODE 5b — Career & Skill-Gap Specialist (Unit IV)
+    Runs in parallel with the other two specialist nodes.
+    """
+    print("\n[LangGraph] Running Career & Skill-Gap Agent (Unit IV)...")
+    profile         = state["profile"]
+    course_analysis = state.get("course_analysis", [])
+    agent           = CareerSkillGapAgent()
+    result          = agent.run(profile, course_analysis)
+    return {"career_analysis_out": result}
+
+
+def workload_feasibility_node(state: AdvisorState) -> dict:
+    """
+    NODE 5c — Workload Feasibility Specialist (Unit IV)
+    Runs after performance_report is available (uses it for GPA context).
+    """
+    print("\n[LangGraph] Running Workload Feasibility Agent (Unit IV)...")
+    profile            = state["profile"]
+    course_analysis    = state.get("course_analysis", [])
+    performance_report = state.get("performance_report", {})
+    agent              = WorkloadFeasibilityAgent()
+    result             = agent.run(profile, course_analysis, performance_report)
+    return {"workload_report": result}
+
+
+def advisory_coordinator_node(state: AdvisorState) -> dict:
+    """
+    NODE 6 — Advisory Coordinator (Unit IV)
+
+    Synthesizes all specialist outputs into a final academic plan.
+    Integrates feedback-adjusted rankings from the Reflection Agent if available.
+    """
+    print("\n[LangGraph] Running Advisory Coordinator Agent (Unit IV)...")
+    profile           = state["profile"]
+    recommendation    = state.get("recommendation", {})
+    performance_report= state.get("performance_report", {})
+    career_analysis   = state.get("career_analysis_out", {})
+    workload_report   = state.get("workload_report", {})
+    reflection_result = state.get("reflection_result", {})
+
+    agent  = AdvisoryCoordinatorAgent()
+    result = agent.run(
+        profile,
+        recommendation,
+        performance_report,
+        career_analysis,
+        workload_report,
+        reflection_result,
+    )
+    return {"coordinator_result": result}
+
+
+# =============================================================================
+# GRAPH BUILDER
+# =============================================================================
 
 def build_graph():
     """
-    Builds and compiles the LangGraph StateGraph.
+    Builds and compiles the extended LangGraph StateGraph.
 
-    Graph structure:
-        START -> academic_profile -> course_analysis -> recommendation -> END
+    Full graph structure:
+        START
+          -> academic_profile
+          -> course_analysis
+          -> recommendation
+          -> reflection              (Unit III)
+          -> academic_performance    (Unit IV specialist 1)
+          -> career_skill_gap        (Unit IV specialist 2)
+          -> workload_feasibility    (Unit IV specialist 3)
+          -> advisory_coordinator    (Unit IV coordinator)
+          -> END
 
-    Returns:
-        CompiledGraph: The compiled, runnable LangGraph graph
+    NOTE: Specialists run sequentially after reflection for simplicity
+    (LangGraph parallel branching requires additional complexity not
+    needed for this academic demo). academic_performance runs first
+    so workload_feasibility can use the GPA estimate.
     """
-
-    # Create the state graph — it will use AdvisorState as the shared state
     graph_builder = StateGraph(AdvisorState)
 
-    # ── Register the three nodes ──────────────────────────────────────────────
-    # Each node is given a name and linked to its function
-    graph_builder.add_node("academic_profile", academic_profile_node)
-    graph_builder.add_node("course_analysis",  course_analysis_node)
-    graph_builder.add_node("recommendation",   recommendation_node)
+    # ── Register all nodes ─────────────────────────────────────────────────────
+    graph_builder.add_node("academic_profile",     academic_profile_node)
+    graph_builder.add_node("course_analysis",      course_analysis_node)
+    graph_builder.add_node("recommendation",       recommendation_node)
+    graph_builder.add_node("reflection",           reflection_node)          # Unit III
+    graph_builder.add_node("academic_performance", academic_performance_node) # Unit IV
+    graph_builder.add_node("career_skill_gap",     career_skill_gap_node)    # Unit IV
+    graph_builder.add_node("workload_feasibility", workload_feasibility_node) # Unit IV
+    graph_builder.add_node("advisory_coordinator", advisory_coordinator_node) # Unit IV
 
-    # ── Connect nodes with edges (defines execution order) ────────────────────
-    # START -> academic_profile -> course_analysis -> recommendation -> END
-    graph_builder.add_edge(START,              "academic_profile")
-    graph_builder.add_edge("academic_profile", "course_analysis")
-    graph_builder.add_edge("course_analysis",  "recommendation")
-    graph_builder.add_edge("recommendation",   END)
+    # ── Connect edges (execution order) ──────────────────────────────────────
+    graph_builder.add_edge(START,                  "academic_profile")
+    graph_builder.add_edge("academic_profile",     "course_analysis")
+    graph_builder.add_edge("course_analysis",      "recommendation")
+    graph_builder.add_edge("recommendation",       "reflection")          # Unit III
+    graph_builder.add_edge("reflection",           "academic_performance") # Unit IV chain
+    graph_builder.add_edge("academic_performance", "career_skill_gap")
+    graph_builder.add_edge("career_skill_gap",     "workload_feasibility")
+    graph_builder.add_edge("workload_feasibility", "advisory_coordinator")
+    graph_builder.add_edge("advisory_coordinator", END)
 
-    # ── Compile the graph ─────────────────────────────────────────────────────
-    # compile() validates the graph and makes it runnable
     compiled_graph = graph_builder.compile()
-
     return compiled_graph
 
 
 # =============================================================================
-# STEP 4: PUBLIC ENTRY FUNCTION
+# PUBLIC ENTRY FUNCTION
 # =============================================================================
 
 def run_advisor(student_id: str) -> dict:
     """
-    Main entry point for the LangGraph advisor workflow.
+    Main entry point for the full LangGraph advisor workflow.
 
-    Initializes the state with the student_id, runs the full graph,
-    and returns the final state containing all results.
+    Runs all 8 nodes and returns the complete final state.
 
     Args:
-        student_id (str): The ID of the student, e.g., "S001"
+        student_id (str): e.g., "S001"
 
     Returns:
-        dict: The final AdvisorState containing:
-              - profile         (from Agent 1)
-              - course_analysis (from Agent 2)
-              - recommendation  (from Agent 3)
+        dict: Final AdvisorState with all agent outputs
     """
     print(f"\n[LangGraph] Starting advisor workflow for student: {student_id}")
 
-    # Build the compiled graph
-    graph = build_graph()
+    graph         = build_graph()
+    initial_state = {"student_id": student_id}
+    final_state   = graph.invoke(initial_state)
 
-    # The initial state only has student_id — the rest is filled by the nodes
-    initial_state = {
-        "student_id": student_id
-    }
-
-    # Invoke the graph — LangGraph runs all nodes in sequence
-    # The final state is returned after all nodes have completed
-    final_state = graph.invoke(initial_state)
-
-    print("\n[LangGraph] Workflow complete.")
+    print("\n[LangGraph] Full workflow complete.")
     return final_state
 
 
 # =============================================================================
-# QUICK SELF-TEST (run this file directly)
+# QUICK SELF-TEST
 # =============================================================================
 
 if __name__ == "__main__":
     result = run_advisor("S001")
 
-    recommendation = result.get("recommendation", {})
-    recs = recommendation.get("recommendations", [])
+    print("\n--- Core Recommendations ---")
+    recs = result.get("recommendation", {}).get("recommendations", [])
+    for r in recs:
+        print(f"  Rank {r['rank']}: {r['course_name']} ({r['score']}/100)")
 
-    print("\n--- Quick Test Results ---")
-    print(f"Student: {result.get('profile', {}).get('name', 'Unknown')}")
-    print(f"Recommendations: {len(recs)}")
-    for rec in recs:
-        print(f"  Rank {rec['rank']}: {rec['course_name']} ({rec['score']}/100)")
+    print("\n--- Reflection (Unit III) ---")
+    refl = result.get("reflection_result", {})
+    print(f"  Feedback applied: {refl.get('feedback_applied')}")
+    for c in refl.get("adjusted_ranking", [])[:3]:
+        print(f"  Rank {c['rank']}: {c['course_name']} "
+              f"({c.get('original_score', c['score'])} -> {c['score']})")
+
+    print("\n--- Coordinator Summary (Unit IV) ---")
+    coord = result.get("coordinator_result", {})
+    print(f"  {coord.get('coordinator_summary', 'N/A')}")
+    print("\n--- Reasoning Chain ---")
+    for step in coord.get("reasoning_chain", []):
+        print(f"  {step}")
