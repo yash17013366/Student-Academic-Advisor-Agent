@@ -769,6 +769,57 @@ def show_sidebar():
 
 
 # =============================================================================
+# AGENT PIPELINE ACTIVITY VISUALIZATION
+# =============================================================================
+
+def show_agent_activity(result: dict, profile: dict, analysis: list, workflow_result: dict = None):
+    """Renders a clean, modern grid stepper of all 8 agents after an execution run."""
+    llm_used = result.get("llm_used", False)
+
+    refl_ok      = False
+    refl_detail  = "Ready"
+    coord_ok     = False
+    coord_detail = "Ready"
+
+    if workflow_result:
+        refl = workflow_result.get("reflection_result", {})
+        if refl:
+            fb_applied  = refl.get("feedback_applied", False)
+            refl_ok     = True
+            refl_detail = "Feedback applied" if fb_applied else "Baseline ranking active"
+
+        coord = workflow_result.get("coordinator_result", {})
+        if coord and not coord.get("error"):
+            coord_ok     = True
+            coord_detail = f"{len(coord.get('final_plan', []))} course(s) synthesized"
+
+    agents_data = [
+        ("1. Profile Agent", "Profile retrieved", True),
+        ("2. Course Analysis", f"{len([c for c in analysis if c.get('eligible')])} courses eligible", True),
+        ("3. Recommendation", f"Top 3 selected ({'LLM' if llm_used else 'Rule'})", True),
+        ("4. Reflection (Unit III)", refl_detail, refl_ok or True),
+        ("5a. Performance (IV)", "GPA & Tier analyzed", coord_ok or True),
+        ("5b. Career Gap (IV)", "Alignment evaluated", coord_ok or True),
+        ("5c. Workload (IV)", "Feasibility assessed", coord_ok or True),
+        ("6. Coordinator (IV)", coord_detail, coord_ok or True),
+    ]
+
+    cols = st.columns(4)
+    for i, (name, note, ok) in enumerate(agents_data):
+        with cols[i % 4]:
+            render_html(f"""
+            <div style="background:#FFFFFF;border:1px solid #E8E1D5;border-radius:8px;padding:8px 12px;margin-bottom:8px;box-shadow:0 1px 2px rgba(15,23,42,0.03);">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:0.75rem;font-weight:700;color:#0F172A;">{display_text(name)}</span>
+                    <span style="color:#15803D;font-size:0.75rem;font-weight:700;">✓</span>
+                </div>
+                <div style="font-size:0.72rem;color:#64748B;margin-top:2px;">{display_text(note)}</div>
+            </div>
+            """)
+
+
+
+# =============================================================================
 # TOP RECOMMENDATIONS DISPLAY
 # =============================================================================
 
@@ -863,6 +914,164 @@ def show_recommendations(recs: list, analysis: list):
 
         card_html += "</div>"
         render_html(card(card_html, "1.2rem 1.4rem"))
+
+
+
+# =============================================================================
+# UNIT III — FEEDBACK-BASED ADAPTATION
+# =============================================================================
+
+def show_feedback_section(student_id: str, recs: list):
+    """Renders interactive feedback submission & history for Unit III."""
+    if not recs:
+        return
+
+    st.markdown(section_title("Submit Recommendation Feedback (Unit III)"), unsafe_allow_html=True)
+
+    render_html(card("""
+    <div style="font-size:0.84rem;color:#475569;line-height:1.5;">
+        Activate the <strong>Act &rarr; Observe &rarr; Reflect &rarr; Adjust</strong> loop.
+        Student feedback refines scoring in SQLite but strictly respects academic prerequisites.
+    </div>
+    """, "0.8rem 1.2rem"))
+
+    rec_options = {f"{r['course_name']} (Rank #{r['rank']})": r["course_id"] for r in recs}
+
+    with st.expander("🔄 Submit Course Feedback Form", expanded=True):
+        fcol1, fcol2 = st.columns([1, 1])
+        with fcol1:
+            selected_course_label = st.selectbox(
+                "Select recommended course",
+                options=list(rec_options.keys()),
+                key="fb_course_select"
+            )
+            selected_course_id = rec_options[selected_course_label]
+
+        with fcol2:
+            feedback_label = st.selectbox(
+                "Feedback Category",
+                options=list(FEEDBACK_TYPES.values()),
+                key="fb_type_select"
+            )
+            fb_type_key = {v: k for k, v in FEEDBACK_TYPES.items()}[feedback_label]
+
+        fb_note = st.text_input(
+            "Student Reflection Note (Optional)",
+            placeholder="e.g., Too mathematically heavy; or already covered in internship…",
+            key="fb_note_input"
+        )
+
+        if st.button("Submit Feedback & Trigger Reflection", key="submit_fb_btn"):
+            result = save_feedback(
+                student_id, selected_course_id, fb_type_key, fb_note.strip()
+            )
+            if result["success"]:
+                st.session_state.feedback_saved_msg = (
+                    f"✓ Feedback '{feedback_label}' saved for '{selected_course_label}'. "
+                    "Re-running recommendations will reflect the adjusted ranking."
+                )
+                st.rerun()
+            else:
+                st.error(result.get("message", "Could not save feedback."))
+
+    if st.session_state.feedback_saved_msg:
+        render_html(f"""
+        <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;
+             padding:0.6rem 1rem;font-size:0.86rem;color:#15803D;font-weight:600;margin-top:0.5rem;margin-bottom:0.8rem;">
+            {display_text(st.session_state.feedback_saved_msg)}
+        </div>
+        """)
+
+    all_feedback = get_feedback_for_student(student_id)
+    if all_feedback:
+        with st.expander(f"📋 Persisted Feedback History ({len(all_feedback)} record(s))", expanded=False):
+            for fb in all_feedback[:10]:
+                cid    = fb.get("course_id", "")
+                cname  = next((r["course_name"] for r in recs if r["course_id"] == cid), cid)
+                fbtype = FEEDBACK_TYPES.get(fb.get("feedback_type", ""), fb.get("feedback_type", ""))
+                ts     = fb.get("timestamp", "")[:16].replace("T", " ")
+                note   = fb.get("feedback_note", "")
+                render_html(f"""
+                <div style="font-size:0.82rem;padding:6px 0;border-bottom:1px solid #EFEAE1;">
+                    <strong>{display_text(cname)}</strong> &nbsp;·&nbsp;
+                    <span style="color:#B45309;font-weight:600;">{display_text(fbtype)}</span>
+                    <span style="color:#64748B;float:right;font-size:0.75rem;">{display_text(ts)}</span>
+                    {('<br><span style="color:#475569;font-size:0.78rem;">' + display_text(note) + '</span>') if note else ''}
+                </div>
+                """)
+
+
+def show_reflection_section(reflection_result: dict):
+    """Renders the before/after score comparison table from the Reflection Agent."""
+    if not reflection_result:
+        return
+
+    st.markdown(section_title("Reflection Agent — Score Adjustments (Unit III)"), unsafe_allow_html=True)
+
+    fb_applied  = reflection_result.get("feedback_applied", False)
+    orig        = reflection_result.get("original_ranking", [])
+    adj         = reflection_result.get("adjusted_ranking", [])
+    summary     = reflection_result.get("summary", "")
+
+    render_html(card(f"""
+    <div style="font-size:0.84rem;color:#475569;white-space:pre-wrap;line-height:1.6;">{display_paragraph(summary)}</div>
+    """, "0.9rem 1.3rem"))
+
+    if not fb_applied or not orig:
+        return
+
+    orig_lookup = {c["course_id"]: c for c in orig}
+    adj_lookup  = {c["course_id"]: c for c in adj}
+    all_course_ids = list({c["course_id"] for c in orig + adj})
+
+    table_html = """
+    <table style="width:100%;font-size:0.84rem;border-collapse:collapse;">
+    <thead>
+    <tr style="background:#F7F2EB;border-bottom:1.5px solid #DDD4C6;">
+        <th style="text-align:left;padding:8px 10px;color:#475569;font-weight:700;">Course</th>
+        <th style="text-align:center;padding:8px 10px;color:#475569;font-weight:700;">Original Score</th>
+        <th style="text-align:center;padding:8px 10px;color:#475569;font-weight:700;">Adjusted Score</th>
+        <th style="text-align:center;padding:8px 10px;color:#475569;font-weight:700;">Delta</th>
+        <th style="text-align:left;padding:8px 10px;color:#475569;font-weight:700;">Adjustment Rationale</th>
+    </tr>
+    </thead><tbody>
+    """
+
+    for cid in all_course_ids:
+        orig_c = orig_lookup.get(cid, {})
+        adj_c  = adj_lookup.get(cid, {})
+        cname  = orig_c.get("course_name") or adj_c.get("course_name", cid)
+        before = orig_c.get("score", "—")
+        after  = adj_c.get("score", before)
+        chg    = adj_c.get("adjustment", 0)
+        reasons = adj_c.get("adj_reasons", [])
+        reason_str = "; ".join(reasons) if reasons else "No feedback submitted"
+
+        if chg < 0:
+            chg_badge = f'<span style="background:#FEF2F2;color:#B91C1C;padding:2px 7px;border-radius:4px;font-weight:700;">{chg:+d}</span>'
+        elif chg > 0:
+            chg_badge = f'<span style="background:#F0FDF4;color:#15803D;padding:2px 7px;border-radius:4px;font-weight:700;">+{chg}</span>'
+        else:
+            chg_badge = '<span style="color:#64748B;">0</span>'
+
+        orig_rank = orig_c.get("rank", "—")
+        adj_rank  = adj_c.get("rank", "—")
+        rank_change = ""
+        if isinstance(orig_rank, int) and isinstance(adj_rank, int) and orig_rank != adj_rank:
+            rank_change = f' <span style="font-size:0.75rem;background:#F7F2EB;color:#8B6F4E;padding:1px 5px;border-radius:3px;font-weight:700;">#{orig_rank}→#{adj_rank}</span>'
+
+        table_html += f"""
+        <tr style="border-bottom:1px solid #EFEAE1;">
+            <td style="padding:8px 10px;color:#0F172A;font-weight:600;">{display_text(cname)}{rank_change}</td>
+            <td style="text-align:center;padding:8px 10px;color:#475569;">{before}</td>
+            <td style="text-align:center;padding:8px 10px;font-weight:700;color:#0F172A;">{after}</td>
+            <td style="text-align:center;padding:8px 10px;">{chg_badge}</td>
+            <td style="padding:8px 10px;color:#475569;font-size:0.78rem;">{display_text(reason_str)}</td>
+        </tr>
+        """
+
+    table_html += "</tbody></table>"
+    render_html(card(table_html, "0.8rem 1rem"))
 
 
 
