@@ -925,46 +925,50 @@ def show_preferences_section(student_id: str):
 # =============================================================================
 
 def show_main_dashboard():
-    """Renders the main advisor dashboard after initialization."""
-
+    """Renders the presentation-ready student advisor dashboard."""
     show_sidebar()
 
     # ── Header ────────────────────────────────────────────────────────────────
     render_html("""
-    <div style="padding: 1.8rem 0 0.5rem 0;">
+    <div style="padding: 0.8rem 0 1rem 0;">
         <div style="display:flex;justify-content:space-between;align-items:flex-end;">
             <div>
-                <div style="font-family:'Playfair Display',serif;font-size:1.9rem;
-                     font-weight:700;color:#2C241F;letter-spacing:0.02em;">
+                <div style="display:inline-block;background:#F7F2EB;color:#8B6F4E;border:1px solid #E8DFD3;
+                     border-radius:16px;padding:3px 12px;font-size:0.72rem;font-weight:700;letter-spacing:0.08em;
+                     text-transform:uppercase;margin-bottom:8px;">Academic Advising Portal</div>
+                <div style="font-family:'Playfair Display',serif;font-size:2rem;font-weight:700;color:#0F172A;letter-spacing:0.01em;">
                     Student Academic Advisor
                 </div>
-                <div style="font-size:0.82rem;color:#75685D;margin-top:5px;">
-                    Personalized elective recommendations powered by three specialized AI agents.
+                <div style="font-size:0.86rem;color:#475569;margin-top:3px;">
+                    Personalized elective planning powered by LangGraph 8-Agent collaboration and feedback adaptation.
                 </div>
             </div>
             <div style="text-align:right;">
-                <span style="font-size:0.78rem;color:#4A7C59;font-weight:600;
-                     letter-spacing:0.06em;text-transform:uppercase;">● System Online</span>
+                <span style="font-size:0.76rem;color:#15803D;font-weight:700;letter-spacing:0.06em;
+                     background:#F0FDF4;border:1px solid #BBF7D0;border-radius:20px;padding:5px 14px;display:inline-block;">
+                    ● SYSTEM ACTIVE & READY
+                </span>
             </div>
         </div>
-        <div style="height:2px;background:linear-gradient(to right,#8B6F4E,#DED5C8,transparent);
-             margin-top:12px;margin-bottom:0.5rem;"></div>
+        <div style="height:2px;background:linear-gradient(to right, #8B6F4E, #DDD4C6, transparent);margin-top:12px;margin-bottom:0.8rem;"></div>
     </div>
     """)
 
-    # ── Student selector ──────────────────────────────────────────────────────
+    # ── Student Selector & Advisor Action Bar ─────────────────────────────────
     students      = st.session_state.all_students
     student_ids   = [s["student_id"] for s in students]
-    student_names = [f"{s['student_id']}  —  {s['name']}" for s in students]
+    student_names = [f"{s['student_id']}  —  {s['name']} ({s['program']})" for s in students]
 
     if not student_ids:
         st.error("No students found in the database. Please run main.py to seed the database.")
         return
 
-    col_sel, col_btn = st.columns([3, 1])
-    with col_sel:
+    # Modern Action Card for Student Selection + Prompt
+    hero_col_sel, hero_col_act = st.columns([7, 5], gap="medium")
+
+    with hero_col_sel:
         selected_idx = st.selectbox(
-            "Select Student",
+            "Active Student Profile",
             options  = range(len(student_ids)),
             format_func = lambda i: student_names[i],
             key      = "student_selector",
@@ -977,9 +981,10 @@ def show_main_dashboard():
             st.session_state.profile          = None
             st.session_state.workflow_result  = None
             st.session_state.pref_saved_msg   = ""
+            st.session_state.feedback_saved_msg = ""
             st.rerun()
 
-    # ── Load profile when student is selected ─────────────────────────────────
+    # Load profile when student is selected
     if st.session_state.profile is None or \
        st.session_state.profile.get("student_id") != st.session_state.selected_student:
         with st.spinner("Loading student profile…"):
@@ -987,68 +992,126 @@ def show_main_dashboard():
             st.session_state.profile = agent.run(st.session_state.selected_student)
 
     profile = st.session_state.profile
-
     if profile.get("error"):
         st.error(f"Could not load profile: {profile.get('message')}")
         return
 
-    # ── Two-column layout ─────────────────────────────────────────────────────
-    left_col, right_col = st.columns([5, 7], gap="large")
+    with hero_col_act:
+        st.markdown("<div style='height:26px'></div>", unsafe_allow_html=True)
+        run_btn = st.button("🎯  Run Academic Advisory Pipeline", key="run_btn", use_container_width=True)
 
-    with left_col:
-        show_student_profile(profile)
-        show_preferences_section(st.session_state.selected_student)
-
-    with right_col:
-        # Query input
-        st.markdown(section_title("Ask Your Academic Advisor"), unsafe_allow_html=True)
-
-        query = st.text_area(
-            label            = "Your question",
-            label_visibility = "collapsed",
-            placeholder = "Recommend electives based on my completed subjects and interests.",
-            height      = 90,
+    # Optional prompt/query
+    with st.expander("💬 Optional Advisor Query / Custom Question", expanded=False):
+        query = st.text_input(
+            label       = "Your question for the advisor",
+            placeholder = "e.g. Recommend electives focused on machine learning that match my career goal",
             key         = "advisor_query"
         )
 
-        run_btn = st.button("🎯  Get Recommendations", key="run_btn", use_container_width=True)
+    if run_btn:
+        st.session_state.pref_saved_msg     = ""
+        st.session_state.feedback_saved_msg = ""
+        with st.spinner("Executing 8-Agent Collaborative Workflow…"):
+            try:
+                final_state = run_advisor(st.session_state.selected_student)
+                st.session_state.workflow_result = final_state
+                if not final_state.get("profile", {}).get("error"):
+                    st.session_state.profile = final_state["profile"]
+            except Exception as e:
+                st.error(f"Workflow error: {str(e)}")
+                st.session_state.workflow_result = None
 
-        if run_btn:
-            if not st.session_state.selected_student:
-                st.warning("Please select a student first.")
-            else:
-                # ── Run the full LangGraph workflow ─────────────────────────────
-                st.session_state.pref_saved_msg  = ""
-                with st.spinner("Running advisor workflow…"):
-                    try:
-                        final_state = run_advisor(st.session_state.selected_student)
-                        st.session_state.workflow_result = final_state
-                        # Refresh profile from result (preferences may have changed)
-                        if not final_state.get("profile", {}).get("error"):
-                            st.session_state.profile = final_state["profile"]
-                    except Exception as e:
-                        st.error(f"Workflow error: {str(e)}")
-                        st.session_state.workflow_result = None
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
-        # ── Show results ───────────────────────────────────────────────────────
+    # ── Display Agent Activity Pipeline if workflow has run ───────────────────
+    if st.session_state.workflow_result:
+        wr       = st.session_state.workflow_result
+        analysis = wr.get("course_analysis", [])
+        rec_data = wr.get("recommendation", {})
+        recs     = rec_data.get("recommendations", [])
+        p        = wr.get("profile", profile)
+
+        st.markdown(section_title("Multi-Agent Collaborative Pipeline (8 Agents Active)"), unsafe_allow_html=True)
+        show_agent_activity(rec_data, p, analysis, wr)
+
+    # ── Dashboard Tabs ────────────────────────────────────────────────────────
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "🏆 Recommended Plan",
+        "🔬 Specialist Findings (Unit IV)",
+        "🔄 Feedback & Reflection (Unit III)",
+        "👤 Profile & Preferences"
+    ])
+
+    with tab1:
         if st.session_state.workflow_result:
             wr       = st.session_state.workflow_result
             analysis = wr.get("course_analysis", [])
             rec_data = wr.get("recommendation", {})
             recs     = rec_data.get("recommendations", [])
-            p        = wr.get("profile", profile)
 
             if rec_data.get("no_results"):
                 render_html(card(f"""
-                <div style="color:#75685D;font-size:0.9rem;text-align:center;padding:1rem;">
+                <div style="color:#64748B;font-size:0.9rem;text-align:center;padding:1.5rem;">
                     {display_text(rec_data.get('message', 'No eligible courses found.'))}
                 </div>
                 """))
             elif rec_data.get("error"):
-                st.error(rec_data.get("message", "An error occurred."))
+                st.error(rec_data.get("message", "An error occurred during recommendation generation."))
             else:
-                show_agent_activity(rec_data, p, analysis)
+                # Coordinator Synthesis at top of recommended plan
+                show_coordinator_section(
+                    wr.get("coordinator_result", {}),
+                    wr.get("reflection_result", {})
+                )
+
+                st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
+                st.markdown(section_title("Top Recommended Electives with Detailed Rationale"), unsafe_allow_html=True)
                 show_recommendations(recs, analysis)
+        else:
+            render_html(card("""
+            <div style="text-align:center;padding:2rem 1rem;">
+                <div style="font-size:2.2rem;margin-bottom:8px;">🎯</div>
+                <div style="font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700;color:#0F172A;">
+                    Advisory Recommendations Ready to Generate
+                </div>
+                <div style="font-size:0.86rem;color:#64748B;max-width:540px;margin:8px auto 16px auto;line-height:1.6;">
+                    Click <strong>'Run Academic Advisory Pipeline'</strong> above to trigger the 8-agent LangGraph workflow,
+                    generate course rankings, verify prerequisites, and evaluate specialist findings.
+                </div>
+            </div>
+            """))
+
+    with tab2:
+        if st.session_state.workflow_result:
+            show_specialist_findings(st.session_state.workflow_result)
+        else:
+            render_html(card("""
+            <div style="text-align:center;padding:2rem 1rem;color:#64748B;font-size:0.88rem;">
+                Specialist findings will be displayed once the advisory pipeline runs.
+            </div>
+            """))
+
+    with tab3:
+        if st.session_state.workflow_result:
+            wr   = st.session_state.workflow_result
+            recs = wr.get("recommendation", {}).get("recommendations", [])
+            show_feedback_section(st.session_state.selected_student, recs)
+            show_reflection_section(wr.get("reflection_result", {}))
+        else:
+            render_html(card("""
+            <div style="text-align:center;padding:2rem 1rem;color:#64748B;font-size:0.88rem;">
+                Run the advisory pipeline to unlock the feedback submission and score adjustment reflection loop.
+            </div>
+            """))
+
+    with tab4:
+        col_prof, col_pref = st.columns([6, 6], gap="large")
+        with col_prof:
+            st.markdown(section_title("Student Profile Breakdown"), unsafe_allow_html=True)
+            show_student_profile(profile)
+
+        with col_pref:
+            show_preferences_section(st.session_state.selected_student)
 
 
 # =============================================================================
