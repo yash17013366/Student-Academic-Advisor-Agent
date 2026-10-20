@@ -1,23 +1,26 @@
 """
 streamlit_app.py
 ----------------
-PHASE 3A - Streamlit UI for the Student Academic Advisor Agent System
+Streamlit UI for the Student Academic Advisor Agent System
+Multi-Agent Collaborative System with Feedback Adaptation (Units I-IV)
 
 ARCHITECTURE:
     Streamlit (UI)
         |
         v
-    run_advisor(student_id)   <- LangGraph workflow
+    run_advisor(student_id)  <- LangGraph 8-Node Workflow
+        |
+        +-> Agent 1: Academic Profile Agent
+        +-> Agent 2: Course Analysis Agent (Prerequisites & Rules)
+        +-> Agent 3: Recommendation Agent (Scoring & Ollama/Rule Explanations)
+        +-> Agent 4: Reflection Agent (Unit III - Feedback Adaptation)
+        +-> Agent 5a: Academic Performance Agent (Unit IV)
+        +-> Agent 5b: Career & Skill-Gap Agent (Unit IV)
+        +-> Agent 5c: Workload Feasibility Agent (Unit IV)
+        +-> Agent 6: Advisory Coordinator Agent (Unit IV - Synthesis & Plan)
         |
         v
-    Agent 1 -> Agent 2 -> Agent 3 -> Ollama
-        |
-        v
-    PreferenceMemory (SQLite)
-
-TWO SCREENS:
-    1. Initialization  — system checks + sequential agent ONLINE display
-    2. Main Dashboard  — student selector, recommendations, preferences
+    SQLite Persistence (academic_advisor.db: preferences & recommendation_feedback)
 
 Run with:
     streamlit run ui/streamlit_app.py
@@ -37,12 +40,20 @@ import streamlit as st
 
 # ── Project imports ───────────────────────────────────────────────────────────
 from database.database         import get_all_students, get_all_electives, get_connection
-from agents.academic_profile_agent import AcademicProfileAgent
-from agents.course_analysis_agent  import CourseAnalysisAgent
-from agents.recommendation_agent   import RecommendationAgent
-from workflow.advisor_graph        import run_advisor, build_graph
-from memory.preference_memory      import PreferenceMemory
-from llm.ollama_client             import is_ollama_running, is_model_available, OLLAMA_MODEL
+from database.feedback_db      import (save_feedback, get_feedback_for_student,
+                                       get_feedback_for_course, FEEDBACK_TYPES,
+                                       create_feedback_table)
+from agents.academic_profile_agent     import AcademicProfileAgent
+from agents.course_analysis_agent      import CourseAnalysisAgent
+from agents.recommendation_agent       import RecommendationAgent
+from agents.reflection_agent           import ReflectionAgent
+from agents.academic_performance_agent import AcademicPerformanceAgent
+from agents.career_skill_gap_agent     import CareerSkillGapAgent
+from agents.workload_feasibility_agent import WorkloadFeasibilityAgent
+from agents.advisory_coordinator_agent import AdvisoryCoordinatorAgent
+from workflow.advisor_graph           import run_advisor, build_graph
+from memory.preference_memory         import PreferenceMemory
+from llm.ollama_client                import is_ollama_running, is_model_available, OLLAMA_MODEL
 
 
 # =============================================================================
@@ -58,240 +69,383 @@ st.set_page_config(
 
 
 # =============================================================================
-# DESIGN SYSTEM — CSS
+# DESIGN SYSTEM — PREMIUM ACADEMIC SAAS CSS
 # =============================================================================
 
-CREAM_CSS = """
+PREMIUM_DESIGN_CSS = """
 <style>
-/* ── Google Fonts ──────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+/* ── Typography: Google Fonts ───────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
 
-/* ── Color Palette ─────────────────────────────────── */
+/* ── Core Design Tokens ─────────────────────────────────────── */
 :root {
-    --bg-main:      #F7F3EA;
-    --bg-card:      #FFFDF8;
-    --bg-sidebar:   #EFE9DC;
-    --text-primary: #2C241F;
-    --text-secondary: #75685D;
-    --text-muted:   #A89887;
-    --border:       #DED5C8;
-    --accent:       #8B6F4E;
-    --accent-light: #C4A882;
-    --accent-bg:    #F2EBE0;
-    --online-green: #4A7C59;
-    --online-bg:    #EBF4EE;
-    --warn-amber:   #8B6914;
-    --warn-bg:      #FDF6E3;
-    --score-high:   #4A7C59;
-    --score-mid:    #8B6914;
+    --bg-canvas:     #F8F6F0;
+    --bg-card:       #FFFFFF;
+    --bg-sidebar:    #F1EDE4;
+    --bg-subtle:     #FAF7F2;
+    --bg-hover:      #F5EFE6;
+
+    --text-primary:  #0F172A;
+    --text-secondary:#475569;
+    --text-muted:    #64748B;
+    --text-subtle:   #94A3B8;
+
+    --border-light:  #E8E1D5;
+    --border-medium: #DDD4C6;
+    --border-focus:  #8B6F4E;
+
+    --accent-bronze: #8B6F4E;
+    --accent-dark:   #6E5338;
+    --accent-light:  #C4A882;
+    --accent-subtle: #F7F2EB;
+
+    --success-text:  #15803D;
+    --success-bg:    #F0FDF4;
+    --success-border:#BBF7D0;
+
+    --warning-text:  #B45309;
+    --warning-bg:    #FEFCE8;
+    --warning-border:#FEF08A;
+
+    --danger-text:   #B91C1C;
+    --danger-bg:     #FEF2F2;
+    --danger-border: #FECACA;
+
+    --shadow-sm:     0 1px 2px rgba(15, 23, 42, 0.05);
+    --shadow-md:     0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+    --shadow-lg:     0 12px 28px -4px rgba(15, 23, 42, 0.12), 0 6px 14px -3px rgba(15, 23, 42, 0.06);
+    --radius-sm:     6px;
+    --radius-md:     10px;
+    --radius-lg:     14px;
 }
 
-/* ── Global ─────────────────────────────────────────── */
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
-    color: var(--text-primary);
+/* ── Global Styles ──────────────────────────────────────────── */
+html, body, [class*="css"], .stApp {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    background-color: var(--bg-canvas) !important;
+    color: var(--text-primary) !important;
+    -webkit-font-smoothing: antialiased;
 }
 
-.stApp {
-    background-color: var(--bg-main);
-    overflow-x: hidden;
-}
-
+/* ── Main Container ─────────────────────────────────────────── */
 [data-testid="stMainBlockContainer"] {
-    max-width: 1380px;
-    padding-top: 1.2rem;
-    padding-bottom: 2.5rem;
+    max-width: 1360px !important;
+    padding-top: 1.2rem !important;
+    padding-bottom: 3rem !important;
 }
 
-[data-testid="stSidebarContent"] {
-    padding-top: 1.1rem;
+/* ── Header Bar ─────────────────────────────────────────────── */
+header[data-testid="stHeader"] {
+    background: var(--bg-canvas) !important;
+    border-bottom: 1px solid var(--border-light) !important;
 }
 
-/* ── Sidebar ─────────────────────────────────────────── */
+#MainMenu, footer {
+    visibility: hidden;
+}
+
+[data-testid="stSidebarCollapsedControl"] button,
+header[data-testid="stHeader"] [data-testid="stBaseButton-headerNoPadding"],
+[data-testid="collapsedControl"] button {
+    background: var(--accent-bronze) !important;
+    border: 1px solid var(--accent-dark) !important;
+    border-radius: var(--radius-sm) !important;
+    color: #FFFFFF !important;
+}
+
+/* ── Sidebar Styling ────────────────────────────────────────── */
 [data-testid="stSidebar"] {
     background-color: var(--bg-sidebar) !important;
-    border-right: 1px solid var(--border);
+    border-right: 1px solid var(--border-medium) !important;
 }
 
 [data-testid="stSidebar"] * {
     color: var(--text-primary) !important;
 }
 
-/* Keep the header visible: it contains the sidebar expand/collapse control. */
-#MainMenu, footer { visibility: hidden; }
-header[data-testid="stHeader"] {
-    background: var(--bg-main) !important;
-    border-bottom: 1px solid var(--border);
-}
-/* Streamlit's control remains available after the sidebar is collapsed. */
-[data-testid="stSidebarCollapsedControl"] {
-    display: flex !important;
-    visibility: visible !important;
-}
-[data-testid="stSidebarCollapsedControl"] button,
-header[data-testid="stHeader"] [data-testid="stBaseButton-headerNoPadding"] {
-    background: var(--accent) !important;
-    border: 1px solid #6B5038 !important;
-    border-radius: 5px !important;
-    color: #FFFDF8 !important;
-    height: 2rem !important;
-    min-width: 2rem !important;
-    opacity: 1 !important;
-}
-[data-testid="collapsedControl"],
-[data-testid="collapsedControl"] button,
-header[data-testid="stHeader"] button {
-    background-color: #4A3224 !important;
-    border: 1px solid #2C241F !important;
-    border-radius: 5px !important;
-    color: #FFFDF8 !important;
-    opacity: 1 !important;
-}
-[data-testid="collapsedControl"]:hover,
-[data-testid="collapsedControl"] button:hover,
-header[data-testid="stHeader"] button:hover {
-    background-color: #2C241F !important;
-}
-[data-testid="stSidebarCollapsedControl"] button svg,
-header[data-testid="stHeader"] [data-testid="stBaseButton-headerNoPadding"] svg {
-    fill: #FFFDF8 !important;
-    stroke: #FFFDF8 !important;
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+[data-testid="stSidebar"] span {
+    color: var(--text-secondary) !important;
 }
 
-/* ── Buttons ─────────────────────────────────────────── */
-.stButton > button {
-    background: var(--accent) !important;
-    color: #FFFDF8 !important;
-    border: none !important;
-    border-radius: 6px !important;
-    font-family: 'Inter', sans-serif !important;
-    font-weight: 500 !important;
-    font-size: 0.9rem !important;
-    padding: 0.55rem 1.4rem !important;
-    letter-spacing: 0.04em !important;
-    transition: background 0.2s ease !important;
-}
-.stButton > button:hover {
-    background: #6B5038 !important;
-}
-
-/* ── Selectbox ───────────────────────────────────────── */
+/* ── COMPREHENSIVE FIX FOR SELECTBOX & DROPDOWN MENUS ───────── */
+/* Native select trigger */
+div[data-baseweb="select"],
 .stSelectbox > div > div {
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 6px !important;
+    background-color: #FFFFFF !important;
+    border: 1.5px solid var(--border-medium) !important;
+    border-radius: var(--radius-md) !important;
     color: var(--text-primary) !important;
+    box-shadow: var(--shadow-sm) !important;
+    transition: all 0.2s ease !important;
 }
 
-/* ── Text input ──────────────────────────────────────── */
+div[data-baseweb="select"]:hover,
+div[data-baseweb="select"]:focus-within {
+    border-color: var(--accent-bronze) !important;
+    box-shadow: 0 0 0 3px rgba(139, 111, 78, 0.14) !important;
+}
+
+div[data-baseweb="select"] * {
+    color: var(--text-primary) !important;
+    background-color: transparent !important;
+}
+
+div[data-baseweb="select"] svg {
+    fill: var(--accent-bronze) !important;
+    stroke: var(--accent-bronze) !important;
+}
+
+/* Floating Popover / Virtual Dropdown List (Fixes dark background issue) */
+div[data-baseweb="popover"],
+div[data-baseweb="popover"] > div,
+ul[data-testid="stSelectboxVirtualDropdown"] {
+    background-color: #FFFFFF !important;
+    border: 1px solid var(--border-medium) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: var(--shadow-lg) !important;
+    z-index: 999999 !important;
+    overflow: hidden !important;
+}
+
+div[data-baseweb="popover"] ul,
+div[data-baseweb="popover"] ul[role="listbox"] {
+    background-color: #FFFFFF !important;
+    padding: 6px !important;
+    border: none !important;
+}
+
+div[data-baseweb="popover"] li,
+div[data-baseweb="popover"] li[role="option"],
+div[data-baseweb="popover"] div[role="option"] {
+    background-color: #FFFFFF !important;
+    color: var(--text-primary) !important;
+    font-size: 0.88rem !important;
+    font-weight: 500 !important;
+    border-radius: var(--radius-sm) !important;
+    padding: 9px 12px !important;
+    margin-bottom: 2px !important;
+    transition: background-color 0.15s ease, color 0.15s ease !important;
+}
+
+div[data-baseweb="popover"] li:hover,
+div[data-baseweb="popover"] li[aria-selected="true"],
+div[data-baseweb="popover"] div[role="option"]:hover,
+div[data-baseweb="popover"] div[role="option"][aria-selected="true"] {
+    background-color: var(--accent-subtle) !important;
+    color: var(--accent-bronze) !important;
+    font-weight: 600 !important;
+}
+
+/* ── Form Inputs & Textareas ────────────────────────────────── */
 .stTextInput > div > div > input,
 .stTextArea > div > div > textarea {
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 6px !important;
+    background-color: #FFFFFF !important;
+    border: 1.5px solid var(--border-medium) !important;
+    border-radius: var(--radius-md) !important;
     color: var(--text-primary) !important;
-    font-family: 'Inter', sans-serif !important;
+    font-size: 0.9rem !important;
+    padding: 10px 14px !important;
+    box-shadow: var(--shadow-sm) !important;
+    transition: all 0.2s ease !important;
 }
 
-/* ── Divider ─────────────────────────────────────────── */
-hr { border-color: var(--border) !important; }
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus {
+    border-color: var(--accent-bronze) !important;
+    box-shadow: 0 0 0 3px rgba(139, 111, 78, 0.14) !important;
+    outline: none !important;
+}
 
-/* ── Labels ──────────────────────────────────────────── */
-.stSelectbox label, .stTextInput label, .stTextArea label {
+.stSelectbox label,
+.stTextInput label,
+.stTextArea label {
     color: var(--text-secondary) !important;
-    font-size: 0.82rem !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.05em !important;
+    font-size: 0.76rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.08em !important;
     text-transform: uppercase !important;
+    margin-bottom: 4px !important;
 }
 
-/* ── Spinners/progress ───────────────────────────────── */
-.stSpinner > div { border-top-color: var(--accent) !important; }
-
-/* ── Metric ──────────────────────────────────────────── */
-[data-testid="metric-container"] {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.8rem 1rem;
+/* ── Buttons ────────────────────────────────────────────────── */
+.stButton > button {
+    background: linear-gradient(135deg, #8B6F4E 0%, #725638 100%) !important;
+    color: #FFFFFF !important;
+    border: 1px solid #6E5338 !important;
+    border-radius: var(--radius-md) !important;
+    font-weight: 600 !important;
+    font-size: 0.92rem !important;
+    padding: 0.65rem 1.4rem !important;
+    letter-spacing: 0.02em !important;
+    box-shadow: 0 2px 5px rgba(110, 83, 56, 0.2) !important;
+    transition: all 0.2s ease !important;
 }
 
-/* Keep custom card content contained on laptop-width screens. */
-.advisor-card, .advisor-card * {
-    overflow-wrap: anywhere;
+.stButton > button:hover {
+    background: linear-gradient(135deg, #7A6042 0%, #63492F 100%) !important;
+    box-shadow: 0 5px 12px rgba(110, 83, 56, 0.28) !important;
+    transform: translateY(-1px);
 }
-.recommendation-card {
-    border-left: 3px solid #8B6F4E !important;
+
+.stButton > button:active {
+    transform: translateY(0);
 }
-.recommendation-score {
-    min-width: 78px;
+
+/* ── Modern Tabs ────────────────────────────────────────────── */
+.stTabs [data-baseweb="tab-list"] {
+    background-color: transparent !important;
+    gap: 8px !important;
+    border-bottom: 2px solid var(--border-medium) !important;
+    padding-bottom: 0 !important;
+    margin-bottom: 1.4rem !important;
 }
-@media (max-width: 780px) {
-    [data-testid="stMainBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
-    .recommendation-meta { grid-template-columns: 1fr !important; }
+
+.stTabs [data-baseweb="tab"] {
+    background-color: var(--bg-subtle) !important;
+    border: 1px solid var(--border-light) !important;
+    border-bottom: none !important;
+    border-radius: 8px 8px 0 0 !important;
+    color: var(--text-secondary) !important;
+    font-size: 0.88rem !important;
+    font-weight: 600 !important;
+    padding: 10px 20px !important;
+    transition: all 0.2s ease !important;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    background-color: #FFFFFF !important;
+    color: var(--accent-bronze) !important;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: #FFFFFF !important;
+    color: var(--accent-bronze) !important;
+    border-color: var(--accent-bronze) var(--accent-bronze) #FFFFFF var(--accent-bronze) !important;
+    border-top: 3px solid var(--accent-bronze) !important;
+    font-weight: 700 !important;
+}
+
+/* ── Expanders ──────────────────────────────────────────────── */
+div[data-testid="stExpander"] {
+    background-color: #FFFFFF !important;
+    border: 1px solid var(--border-light) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: var(--shadow-sm) !important;
+    margin-bottom: 1rem !important;
+    overflow: hidden !important;
+}
+
+div[data-testid="stExpander"] summary {
+    background-color: #FAF8F4 !important;
+    color: var(--text-primary) !important;
+    font-weight: 600 !important;
+    font-size: 0.88rem !important;
+    padding: 11px 16px !important;
+    border-bottom: 1px solid var(--border-light) !important;
+}
+
+div[data-testid="stExpander"] summary:hover {
+    background-color: var(--accent-subtle) !important;
+    color: var(--accent-bronze) !important;
+}
+
+div[data-testid="stExpander"] > div[role="region"] {
+    padding: 16px 18px !important;
+    background-color: #FFFFFF !important;
+}
+
+/* ── Dividers ───────────────────────────────────────────────── */
+hr {
+    border-color: var(--border-light) !important;
+    margin: 1rem 0 !important;
+}
+
+/* ── Responsive adjustments ─────────────────────────────────── */
+@media (max-width: 900px) {
+    [data-testid="stMainBlockContainer"] {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
 }
 </style>
 """
 
-st.markdown(CREAM_CSS, unsafe_allow_html=True)
+st.markdown(PREMIUM_DESIGN_CSS, unsafe_allow_html=True)
 
 
 # =============================================================================
-# HTML COMPONENT HELPERS
+# REUSABLE COMPONENT HELPERS
 # =============================================================================
 
 def render_html(content: str) -> None:
-    """Render intentional UI markup without passing it through Markdown."""
+    """Render intentional UI markup cleanly without markdown distortion."""
     st.html(dedent(content).strip())
 
+
 def display_text(text: object) -> str:
-    """Escape data values before inserting them into intentional UI markup."""
+    """Escape data values safely for HTML interpolation."""
     return escape("" if text is None else str(text), quote=True)
 
+
 def display_paragraph(text: object) -> str:
-    """Keep explanations readable while preventing data from becoming page markup."""
+    """Convert multi-line text into clean readable HTML breaks."""
     return display_text(text).replace("\n", "<br>")
 
-def card(content_html: str, padding: str = "1.4rem 1.6rem", extra_style: str = "") -> str:
-    """Returns an HTML card wrapper."""
+
+def card(content_html: str, padding: str = "1.25rem 1.5rem", extra_style: str = "") -> str:
+    """Generates a cohesive, polished white card."""
     return dedent(f"""
-    <div class="advisor-card" style="
-        background: #FFFDF8;
-        border: 1px solid #DED5C8;
-        border-radius: 10px;
+    <div style="
+        background: #FFFFFF;
+        border: 1px solid #E8E1D5;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
         padding: {padding};
         margin-bottom: 1rem;
         {extra_style}
     ">{content_html}</div>
     """).strip()
 
+
 def label(text: str) -> str:
-    return f'<span style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;color:#75685D;text-transform:uppercase;">{display_text(text)}</span>'
+    """Renders a standard subtle uppercase field label."""
+    return f'<span style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;color:#64748B;text-transform:uppercase;">{display_text(text)}</span>'
 
-def value(text: str, size: str = "1rem") -> str:
-    return f'<span style="font-size:{size};font-weight:500;color:#2C241F;">{display_text(text)}</span>'
 
-def tag(text: str, color: str = "#8B6F4E") -> str:
-    return f'<span style="display:inline-block;background:#F2EBE0;color:{color};border:1px solid #DED5C8;border-radius:4px;padding:2px 8px;font-size:0.75rem;font-weight:500;margin:2px 3px 2px 0;">{display_text(text)}</span>'
+def value(text: str, size: str = "0.95rem") -> str:
+    """Renders a standard primary data value."""
+    return f'<span style="font-size:{size};font-weight:600;color:#0F172A;">{display_text(text)}</span>'
+
+
+def tag(text: str, color: str = "#8B6F4E", bg: str = "#F7F2EB", border: str = "#E8DFD3") -> str:
+    """Renders a modern rounded pill badge."""
+    return f'<span style="display:inline-block;background:{bg};color:{color};border:1px solid {border};border-radius:6px;padding:3px 9px;font-size:0.75rem;font-weight:600;margin:2px 4px 2px 0;">{display_text(text)}</span>'
+
 
 def status_dot(online: bool, text: str) -> str:
-    color = "#4A7C59" if online else "#A89887"
+    """Renders a bulleted status indicator."""
+    color = "#15803D" if online else "#94A3B8"
     dot   = "●"
-    return f'<span style="color:{color};font-size:0.85rem;">{dot} {display_text(text)}</span>'
+    return f'<span style="color:{color};font-size:0.85rem;font-weight:600;">{dot} {display_text(text)}</span>'
+
 
 def check_row(text: str, ok: bool = True) -> str:
-    icon  = "✓" if ok else "✗"
-    color = "#4A7C59" if ok else "#C0392B"
-    return f'<div style="color:{color};font-size:0.88rem;margin:3px 0;">{icon} {display_text(text)}</div>'
+    """Renders a clean requirement checklist row."""
+    icon  = "✓" if ok else "○"
+    color = "#15803D" if ok else "#94A3B8"
+    return f'<div style="color:{color};font-size:0.84rem;margin:3px 0;font-weight:500;">{icon} {display_text(text)}</div>'
 
-def section_title(text: str, size: str = "1.05rem") -> str:
-    return f'''<div style="font-size:0.7rem;font-weight:700;letter-spacing:0.12em;
-    color:#75685D;text-transform:uppercase;border-bottom:1px solid #DED5C8;
-    padding-bottom:6px;margin-bottom:12px;">{text}</div>'''
+
+def section_title(text: str, size: str = "0.76rem") -> str:
+    """Renders a consistent modern section heading with accent rule."""
+    return f'''<div style="font-size:{size};font-weight:800;letter-spacing:0.12em;
+    color:#8B6F4E;text-transform:uppercase;border-bottom:1.5px solid #E8E1D5;
+    padding-bottom:5px;margin-bottom:12px;margin-top:6px;">{text}</div>'''
 
 
 # =============================================================================
-# SYSTEM CHECK FUNCTIONS
+# SYSTEM HEALTH CHECKS
 # =============================================================================
 
 def check_database() -> bool:
