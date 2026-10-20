@@ -773,306 +773,54 @@ def show_sidebar():
 # =============================================================================
 
 def show_student_profile(profile: dict):
-    """Renders the student academic profile card."""
+    """Renders the comprehensive student academic profile."""
+    completed_tags = "".join(tag(s, "#15803D", "#F0FDF4", "#BBF7D0") for s in profile['completed_subjects'])
+    interests_tags = "".join(tag(i) for i in profile["interests"]) if profile["interests"] else '<span style="color:#64748B;font-size:0.84rem;">Not specified</span>'
 
-    st.markdown(section_title("Student Profile"), unsafe_allow_html=True)
-
-    render_html(card(f"""
-    <div style="margin-bottom:0.8rem;">
-        <div style="font-family:'Playfair Display',serif;font-size:1.4rem;
-             font-weight:700;color:#2C241F;">{display_text(profile['name'])}</div>
-        <div style="font-size:0.82rem;color:#75685D;margin-top:3px;">
-             {display_text(profile['program'])} &nbsp;·&nbsp; Semester {display_text(profile['semester'])}
+    card_html = f"""
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.8rem;">
+        <div>
+            <div style="font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:700;color:#0F172A;">
+                {display_text(profile['name'])}
+            </div>
+            <div style="font-size:0.84rem;color:#475569;margin-top:2px;font-weight:500;">
+                {display_text(profile['program'])} &nbsp;·&nbsp; Semester {display_text(profile['semester'])}
+            </div>
+        </div>
+        <div style="text-align:right;">
+            <span style="background:#F7F2EB;color:#8B6F4E;border:1px solid #E8DFD3;border-radius:6px;padding:3px 10px;font-size:0.75rem;font-weight:700;">
+                ID: {display_text(profile['student_id'])}
+            </span>
         </div>
     </div>
-    <hr style="border-color:#DED5C8;margin:0.8rem 0;">
-    <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;
-         color:#A89887;text-transform:uppercase;margin-bottom:6px;">Completed Subjects</div>
-    <div>{''.join(tag(s) for s in profile['completed_subjects'])}</div>
-    """))
 
-    c1, c2 = st.columns(2)
-
-    with c1:
-        interests_html = "".join(tag(i) for i in profile["interests"]) if profile["interests"] else '<span style="color:#A89887;font-size:0.85rem;">Not specified</span>'
-        render_html(card(f"""
-        {label("Interests")}<br><div style="margin-top:5px;">{interests_html}</div>
-        """, "1rem 1.2rem"))
-
-        render_html(card(f"""
-        {label("Career Goal")}<br>
-        <div style="margin-top:5px;">{value(profile['career_goal'])}</div>
-        """, "1rem 1.2rem"))
-
-    with c2:
-        render_html(card(f"""
-        {label("Preferred Domain")}<br>
-        <div style="margin-top:5px;">{value(profile['preferred_domain'])}</div>
-        """, "1rem 1.2rem"))
-
-        render_html(card(f"""
-        {label("Difficulty Preference")}<br>
-        <div style="margin-top:5px;">
-            {value(profile['difficulty_preference'])}
-            &nbsp;&nbsp;
-            {label("Style")} &nbsp;{value(profile['learning_style'])}
+    <div style="margin-bottom:0.8rem;">
+        <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.1em;color:#64748B;text-transform:uppercase;margin-bottom:4px;">
+            Completed Prerequisite Subjects ({len(profile['completed_subjects'])})
         </div>
-        """, "1rem 1.2rem"))
+        <div>{completed_tags}</div>
+    </div>
 
-
-# =============================================================================
-# AGENT ACTIVITY LOG
-# =============================================================================
-
-def show_agent_activity(result: dict, profile: dict, analysis: list):
-    """Shows only high-level workflow completion status after a run."""
-
-    st.markdown(f"<div style='height:1rem'></div>", unsafe_allow_html=True)
-    st.markdown(section_title("Agent Activity"), unsafe_allow_html=True)
-
-    llm_used = result.get("llm_used", False)
-
-    rows = [
-        ("Academic Profile Agent",  True, "Profile retrieved"),
-        ("Course Analysis Agent",   True, "Electives analyzed"),
-        ("Recommendation Agent",    True, "Top 3 selected"),
-        ("Ollama",
-         True,
-         "Explanation generated" if llm_used else "Rule-based explanation mode active"),
-    ]
-
-    rows_html = ""
-    for agent_name, ok, detail in rows:
-        icon  = "✓" if ok else "✗"
-        color = "#4A7C59" if ok else "#C0392B"
-        rows_html += f"""
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;">
-            <span style="color:{color};font-size:0.95rem;font-weight:700;flex-shrink:0;">{icon}</span>
-            <div>
-                <div style="font-size:0.88rem;font-weight:600;color:#2C241F;">{display_text(agent_name)}</div>
-                <div style="font-size:0.78rem;color:#75685D;">{display_text(detail)}</div>
-            </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:0.8rem;border-top:1px solid #EFEAE1;padding-top:10px;">
+        <div>
+            {label("Stated Interests")}<br>
+            <div style="margin-top:4px;">{interests_tags}</div>
         </div>
-        """
-
-    render_html(card(rows_html, "1rem 1.4rem"))
-
-
-# =============================================================================
-# RECOMMENDATION CARDS
-# =============================================================================
-
-def show_recommendations(recs: list, analysis: list):
-    """Renders Top 3 recommendation cards."""
-
-    if not recs:
-        render_html(card("""
-        <div style="text-align:center;padding:1rem;color:#75685D;font-size:0.9rem;">
-            No eligible electives found. Complete more prerequisite subjects.
+        <div>
+            {label("Target Career Goal")}<br>
+            <div style="margin-top:4px;">{value(profile['career_goal'])}</div>
         </div>
-        """))
-        return
-
-    st.markdown(f"<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-    st.markdown(section_title("Recommended For You"), unsafe_allow_html=True)
-
-    # Build a lookup dict for analysis data by course_id
-    analysis_lookup = {c["course_id"]: c for c in analysis}
-
-    # Load elective metadata from DB for skills and career paths
-    try:
-        all_electives = get_all_electives()
-        elective_meta = {e["course_id"]: dict(e) for e in all_electives}
-    except Exception:
-        elective_meta = {}
-
-    rank_labels = ["01", "02", "03"]
-    score_colors = {
-        range(80, 101): "#4A7C59",
-        range(60, 80) : "#8B6914",
-        range(0,  60) : "#8B4E3A",
-    }
-
-    def score_color(s):
-        for r, c in score_colors.items():
-            if s in r:
-                return c
-        return "#75685D"
-
-    for rec in recs:
-        course_id   = rec["course_id"]
-        course_name = rec["course_name"]
-        domain      = rec["domain"]
-        difficulty  = rec["difficulty"]
-        score       = rec["score"]
-        explanation = rec["explanation"]
-        reasons     = rec.get("reasons", [])
-        src         = rec.get("explanation_source", "rule-based")
-        rank_label  = rank_labels[rec["rank"] - 1] if rec["rank"] <= 3 else str(rec["rank"])
-        sc          = score_color(score)
-
-        # Get skills and career paths from elective metadata
-        meta       = elective_meta.get(course_id, {})
-        skills_str = meta.get("skills", "")
-        careers_str = meta.get("career_paths", "")
-        desc_str   = meta.get("description", "")
-        prereq_str = meta.get("prerequisites", "")
-
-        skills_tags  = "".join(tag(s.strip()) for s in skills_str.split(",") if s.strip()) if skills_str else ""
-        career_tags  = "".join(tag(s.strip(), "#4A7C59") for s in careers_str.split(",") if s.strip()) if careers_str else ""
-        prereq_tags  = "".join(tag(s.strip(), "#A89887") for s in prereq_str.split(",") if s.strip()) if prereq_str else ""
-
-        # Determine alignment flags from Agent 2 reasons
-        has_interest = any("domain" in r.lower() or "interest" in r.lower() for r in reasons)
-        has_career   = any("career" in r.lower() for r in reasons)
-        has_prereq   = any("foundation" in r.lower() or "prerequisites met" in r.lower() for r in reasons)
-        has_pref     = any("difficulty" in r.lower() or "learning" in r.lower() for r in reasons)
-
-        # Explanation label
-        exp_label = f'<span style="font-size:0.7rem;color:#A89887;background:#F2EBE0;border:1px solid #DED5C8;border-radius:3px;padding:1px 6px;margin-left:6px;">{"LLM" if src == "llm" else "Rule-based"}</span>'
-
-        card_html = f"""
-        <div class="recommendation-card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.8rem;">
-            <div>
-                <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.14em;color:#A89887;text-transform:uppercase;">
-                    {rank_label}
-                </div>
-                <div style="font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700;
-                     color:#2C241F;margin-top:2px;">{display_text(course_name)}</div>
-                <div style="font-size:0.8rem;color:#75685D;margin-top:3px;">
-                    {display_text(domain)} &nbsp;·&nbsp; {display_text(difficulty)}
-                </div>
-            </div>
-            <div class="recommendation-score" style="text-align:right;">
-                <div style="font-family:'Playfair Display',serif;font-size:2rem;font-weight:700;color:{sc};">{score}</div>
-                <div style="font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;color:#A89887;">/ 100 Match</div>
-            </div>
+        <div>
+            {label("Preferred Domain")}<br>
+            <div style="margin-top:4px;">{value(profile['preferred_domain'])}</div>
         </div>
-        <hr style="border-color:#DED5C8;margin:0.8rem 0;">
-
-        <div style="margin-bottom:0.8rem;">
-            <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;color:#75685D;
-                 text-transform:uppercase;margin-bottom:5px;">Why this course? {exp_label}</div>
-            <div style="font-size:0.86rem;color:#2C241F;line-height:1.6;">{display_paragraph(explanation)}</div>
+        <div>
+            {label("Difficulty & Style")}<br>
+            <div style="margin-top:4px;">{value(profile['difficulty_preference'])} · {display_text(profile['learning_style'])}</div>
         </div>
-
-        <div class="recommendation-meta" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:0.8rem;">
-            {check_row("Prerequisites satisfied", has_prereq)}
-            {check_row("Interest alignment", has_interest)}
-            {check_row("Career relevance", has_career)}
-            {check_row("Difficulty match", has_pref)}
-        </div>
-        """
-
-        if prereq_tags:
-            card_html += f'<div style="margin-bottom:0.5rem;">{label("Prerequisites")} <div style="margin-top:4px;">{prereq_tags}</div></div>'
-        if skills_tags:
-            card_html += f'<div style="margin-bottom:0.5rem;">{label("Skills Gained")} <div style="margin-top:4px;">{skills_tags}</div></div>'
-        if career_tags:
-            card_html += f'<div>{label("Career Paths")} <div style="margin-top:4px;">{career_tags}</div></div>'
-
-        card_html += "</div>"
-        render_html(card(card_html, "1.2rem 1.4rem"))
-
-
-# =============================================================================
-# PREFERENCES SECTION
-# =============================================================================
-
-def show_preferences_section(student_id: str):
-    """Renders the student memory/preferences panel."""
-
-    st.markdown(f"<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-    st.markdown(section_title("Your Preferences"), unsafe_allow_html=True)
-
-    memory = PreferenceMemory()
-    result = memory.get_preferences(student_id)
-    prefs  = result.get("preferences", [])
-
-    PREF_TYPE_LABELS = {
-        "interest"             : "Interest",
-        "career_goal"          : "Career Goal",
-        "learning_style"       : "Learning Style",
-        "preferred_domain"     : "Preferred Domain",
-        "difficulty_preference": "Difficulty Preference",
-        "course_format"        : "Course Format",
-    }
-
-    if prefs:
-        pref_html = ""
-        for p in prefs:
-            ptype  = p["preference_type"]
-            pval   = p["preference_value"]
-            plabel = PREF_TYPE_LABELS.get(ptype, ptype.replace("_", " ").title())
-            pref_html += f"""
-            <div style="display:flex;justify-content:space-between;align-items:center;
-                 padding:6px 0;border-bottom:1px solid #F0E8DC;">
-                <span style="font-size:0.78rem;color:#75685D;font-weight:500;">{plabel}</span>
-                 <span style="font-size:0.88rem;font-weight:600;color:#2C241F;">{display_text(pval)}</span>
-            </div>
-            """
-        render_html(card(pref_html, "0.8rem 1.2rem"))
-    else:
-        render_html(card("""
-        <div style="color:#A89887;font-size:0.85rem;text-align:center;padding:0.5rem 0;">
-            No preferences stored yet.
-        </div>
-        """, "0.8rem 1.2rem"))
-
-    # ── Add preference form ───────────────────────────────────────────────────
-    with st.expander("＋ Add / Update Preference", expanded=False):
-        pref_type_options = {
-            "Interest"             : "interest",
-            "Career Goal"          : "career_goal",
-            "Learning Style"       : "learning_style",
-            "Preferred Domain"     : "preferred_domain",
-            "Difficulty Preference": "difficulty_preference",
-            "Course Format"        : "course_format",
-        }
-
-        selected_label = st.selectbox(
-            "Preference Type",
-            options = list(pref_type_options.keys()),
-            key     = "pref_type_select"
-        )
-        pref_value = st.text_input(
-            "Preference Value",
-            placeholder = "e.g. Project-based, AI Engineer, Hard…",
-            key         = "pref_value_input"
-        )
-
-        if st.button("Save Preference", key="save_pref_btn"):
-            if pref_value.strip():
-                pref_type_key = pref_type_options[selected_label]
-                r = memory.save_preference(student_id, pref_type_key, pref_value.strip())
-                if r["success"]:
-                    action = r.get("action", "saved")
-                    st.session_state.pref_saved_msg = f"✓ Preference {action}: {selected_label} → {pref_value}"
-                    # Reload profile to reflect the new preference
-                    agent = AcademicProfileAgent()
-                    st.session_state.profile = agent.run(student_id)
-                    st.rerun()
-                else:
-                    st.error(r.get("message", "Could not save preference."))
-            else:
-                st.warning("Please enter a preference value.")
-
-    if st.session_state.pref_saved_msg:
-        render_html(f"""
-        <div style="background:#EBF4EE;border:1px solid #4A7C59;border-radius:6px;
-             padding:0.5rem 0.9rem;font-size:0.85rem;color:#4A7C59;margin-top:0.5rem;">
-            {display_text(st.session_state.pref_saved_msg)}
-        </div>
-        """)
-        # Also show USED FROM MEMORY note if we have a result
-        if st.session_state.workflow_result:
-            render_html("""
-            <div style="background:#F2EBE0;border:1px solid #DED5C8;border-radius:6px;
-                 padding:0.4rem 0.9rem;font-size:0.78rem;color:#8B6F4E;margin-top:4px;">
-                📌 USED FROM MEMORY — preferences will influence the next recommendation run
-            </div>
-            """)
+    </div>
+    """
+    render_html(card(card_html, "1.2rem 1.5rem"))
 
 
 # =============================================================================
