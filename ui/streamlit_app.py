@@ -346,6 +346,7 @@ div[data-testid="stExpander"] summary {
 }
 
 div[data-testid="stExpander"] summary:hover {
+    border-color: var(--accent-bronze) !important;
     background-color: var(--accent-subtle) !important;
     color: var(--accent-bronze) !important;
 }
